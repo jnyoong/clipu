@@ -8,14 +8,20 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import HomeScreen from './screens/HomeScreen';
+import AddLinkScreen from './screens/AddLinkScreen';
 
 export type AuthStackParamList = {
   Login: undefined;
   Signup: undefined;
 };
 
+export type AppStackParamList = {
+  Home: undefined;
+  AddLink: undefined;
+};
+
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
-const AppStack = createNativeStackNavigator();
+const AppStack = createNativeStackNavigator<AppStackParamList>();
 
 function RootNavigator() {
   const { session, loading } = useAuth();
@@ -40,6 +46,7 @@ function RootNavigator() {
   return (
     <AppStack.Navigator screenOptions={{ headerShown: false }}>
       <AppStack.Screen name="Home" component={HomeScreen} />
+      <AppStack.Screen name="AddLink" component={AddLinkScreen} />
     </AppStack.Navigator>
   );
 }
