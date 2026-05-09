@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -8,17 +8,21 @@ import {
   ActivityIndicator,
   Linking,
   Alert,
+  Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { getDomain } from '../lib/og';
 import { AppStackParamList } from '../App';
 
 type Link = {
   id: string;
   url: string;
   title: string | null;
+  description: string | null;
+  image_url: string | null;
   created_at: string;
 };
 
@@ -27,14 +31,14 @@ type Props = {
 };
 
 export default function HomeScreen({ navigation }: Props) {
-  const { session, signOut } = useAuth();
+  const { signOut } = useAuth();
   const [links, setLinks] = useState<Link[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchLinks = async () => {
     const { data, error } = await supabase
       .from('links')
-      .select('id, url, title, created_at')
+      .select('id, url, title, description, image_url, created_at')
       .order('created_at', { ascending: false });
 
     if (!error && data) setLinks(data);
@@ -61,17 +65,43 @@ export default function HomeScreen({ navigation }: Props) {
     ]);
   };
 
+  const renderCard = ({ item }: { item: Link }) => (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => Linking.openURL(item.url)}
+      onLongPress={() => handleDelete(item.id)}
+      activeOpacity={0.7}
+    >
+      {item.image_url ? (
+        <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover" />
+      ) : null}
+      <View style={styles.cardBody}>
+        <Text style={styles.cardTitle} numberOfLines={2}>
+          {item.title || item.url}
+        </Text>
+        <Text style={styles.cardDomain} numberOfLines={1}>
+          {getDomain(item.url)}
+        </Text>
+        {item.description ? (
+          <Text style={styles.cardDesc} numberOfLines={2}>
+            {item.description}
+          </Text>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Clipu</Text>
+        <Text style={styles.logo}>Clipu</Text>
         <TouchableOpacity onPress={signOut}>
           <Text style={styles.signOut}>로그아웃</Text>
         </TouchableOpacity>
       </View>
 
       {loading ? (
-        <ActivityIndicator style={styles.loader} color="#2563EB" />
+        <ActivityIndicator style={styles.loader} color="#2563EB" size="large" />
       ) : links.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyText}>저장된 링크가 없어요</Text>
@@ -82,18 +112,7 @@ export default function HomeScreen({ navigation }: Props) {
           data={links}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() => Linking.openURL(item.url)}
-              onLongPress={() => handleDelete(item.id)}
-            >
-              <Text style={styles.cardUrl} numberOfLines={1}>{item.url}</Text>
-              <Text style={styles.cardDate}>
-                {new Date(item.created_at).toLocaleDateString('ko-KR')}
-              </Text>
-            </TouchableOpacity>
-          )}
+          renderItem={renderCard}
         />
       )}
 
@@ -123,7 +142,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  title: {
+  logo: {
     fontSize: 24,
     fontWeight: '700',
     color: '#2563EB',
@@ -151,26 +170,42 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: 16,
-    gap: 10,
+    gap: 12,
   },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 14,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  cardUrl: {
-    fontSize: 14,
-    color: '#2563EB',
-    marginBottom: 6,
+  cardImage: {
+    width: '100%',
+    height: 180,
+    backgroundColor: '#F3F4F6',
   },
-  cardDate: {
+  cardBody: {
+    padding: 14,
+    gap: 4,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111',
+    lineHeight: 21,
+  },
+  cardDomain: {
     fontSize: 12,
-    color: '#BBB',
+    color: '#2563EB',
+  },
+  cardDesc: {
+    fontSize: 13,
+    color: '#777',
+    lineHeight: 18,
+    marginTop: 2,
   },
   fab: {
     position: 'absolute',

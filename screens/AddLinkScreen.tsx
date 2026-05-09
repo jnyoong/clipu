@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
+import { extractOG } from '../lib/og';
 import { useAuth } from '../contexts/AuthContext';
 import { AppStackParamList } from '../App';
 
@@ -23,6 +24,7 @@ export default function AddLinkScreen({ navigation }: Props) {
   const { session } = useAuth();
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState('');
 
   const handleSave = async () => {
     const trimmed = url.trim();
@@ -33,11 +35,21 @@ export default function AddLinkScreen({ navigation }: Props) {
     const normalized = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
 
     setLoading(true);
+
+    setStatusText('링크 정보 가져오는 중...');
+    const og = await extractOG(normalized);
+
+    setStatusText('저장 중...');
     const { error } = await supabase.from('links').insert({
       user_id: session!.user.id,
       url: normalized,
+      title: og.title,
+      description: og.description,
+      image_url: og.image_url,
     });
+
     setLoading(false);
+    setStatusText('');
 
     if (error) {
       Alert.alert('저장 실패', error.message);
@@ -64,19 +76,25 @@ export default function AddLinkScreen({ navigation }: Props) {
           autoCapitalize="none"
           keyboardType="url"
           autoFocus
+          editable={!loading}
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleSave} disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
+        {loading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator color="#2563EB" />
+            <Text style={styles.loadingText}>{statusText}</Text>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.button} onPress={handleSave}>
             <Text style={styles.buttonText}>저장</Text>
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+        )}
 
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.cancel}>취소</Text>
-        </TouchableOpacity>
+        {!loading && (
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.cancel}>취소</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -124,6 +142,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  loadingBox: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#888',
   },
   cancel: {
     color: '#888',
