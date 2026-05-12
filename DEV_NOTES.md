@@ -120,6 +120,15 @@ a 키 입력
 - Android Studio + Pixel 8 AVD 세팅
 - iOS + Android 동시 정상 동작 확인
 
+### 5단계 — 공유 클립 & 협업 ✅
+- 공유 클립 생성 (클립 추가 시 공유 토글)
+- 초대 링크(`clipu://join/CODE`) 딥링크 참여 흐름
+- owner/member 권한 구분, 클립 삭제 / 나가기
+- **공유 클립으로 전환 (2026-05-12)**: 기존 일반 클립을 꾹 눌러 공유 클립으로 전환 가능
+- **최대 참여 인원 30명 (2026-05-12)**: 기존 8명에서 30명으로 확대
+  - `JoinCollectionScreen` 메시지 변경
+  - Supabase `join_collection` 함수 수정 필요 → 아래 참고
+
 ---
 
 ## 다음 개발 순서
@@ -154,6 +163,47 @@ npx expo prebuild
 ### 8단계 — 앱스토어 출시
 - Android: Google Play ($25 일회성)
 - iOS: App Store ($99/년 Apple 계정 필요)
+
+---
+
+## Supabase join_collection 함수 (인원 30명 제한)
+
+join_collection RPC 함수의 인원 제한을 30명으로 변경하려면 **Supabase SQL Editor**에서 아래 실행:
+
+```sql
+create or replace function public.join_collection(code text)
+returns text
+language plpgsql
+security definer
+as $$
+declare
+  col_id uuid;
+  member_count int;
+begin
+  select id into col_id
+    from public.collections
+   where invite_code = code and is_shared = true;
+
+  if col_id is null then
+    return 'not_found';
+  end if;
+
+  select count(*) into member_count
+    from public.collection_members
+   where collection_id = col_id;
+
+  if member_count >= 30 then
+    return 'full';
+  end if;
+
+  insert into public.collection_members (collection_id, user_id, role)
+    values (col_id, auth.uid(), 'member')
+    on conflict do nothing;
+
+  return 'ok';
+end;
+$$;
+```
 
 ---
 

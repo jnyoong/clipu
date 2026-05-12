@@ -142,10 +142,43 @@ export default function HomeScreen({ navigation }: Props) {
     } catch (_) {}
   };
 
+  const handleConvertToShared = (col: Collection) => {
+    Alert.alert(
+      '공유 클립으로 전환',
+      `"${col.name}"을 공유 클립으로 전환할까요?\n초대 링크로 최대 30명까지 함께 사용할 수 있어요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '전환',
+          onPress: async () => {
+            const updates: Record<string, any> = { is_shared: true };
+            if (!col.invite_code) {
+              updates.invite_code = Math.random().toString(36).substring(2, 10);
+            }
+            const { data, error } = await supabase
+              .from('collections')
+              .update(updates)
+              .eq('id', col.id)
+              .select('id, name, user_id, is_shared, invite_code')
+              .single();
+            if (!error && data) {
+              setCollections((prev) =>
+                prev.map((c) => (c.id === col.id ? { ...data, role: col.role } : c))
+              );
+              Alert.alert('전환 완료', `"${col.name}"이 공유 클립으로 전환됐어요!\n꾹 눌러 초대 링크를 공유할 수 있어요.`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleCollectionTabLongPress = (col: Collection) => {
     const buttons: any[] = [];
     if (col.is_shared) {
       buttons.push({ text: '초대 링크 공유', onPress: () => shareInviteLink(col) });
+    } else if (col.role === 'owner') {
+      buttons.push({ text: '공유 클립으로 전환', onPress: () => handleConvertToShared(col) });
     }
     if (col.role === 'owner') {
       buttons.push({ text: '클립 삭제', style: 'destructive', onPress: () => handleDeleteCollection(col) });

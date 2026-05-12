@@ -42,7 +42,7 @@ export default function JoinCollectionScreen({ inviteCode, onJoined, onCancel }:
       return;
     }
     if (data === 'full') {
-      setError('클립이 가득 찼어요 (최대 8명)');
+      setError('클립이 가득 찼어요 (최대 30명)');
       return;
     }
     if (data === 'not_found') {
