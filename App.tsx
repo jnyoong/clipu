@@ -71,9 +71,14 @@ function AppContent() {
   useEffect(() => {
     const handleUrl = (url: string) => {
       const parsed = ExpoLinking.parse(url);
-      if (parsed.scheme === 'clipu' && parsed.path) {
-        const match = parsed.path.match(/^join\/(.+)$/);
-        if (match) setPendingInviteCode(match[1]);
+      if (parsed.scheme === 'clipu') {
+        // clipu://join/CODE → hostname='join', path='CODE'
+        // 또는 clipu://join/CODE → path='join/CODE' 두 경우 모두 처리
+        const code =
+          parsed.hostname === 'join' && parsed.path
+            ? parsed.path
+            : parsed.path?.match(/^join\/(.+)$/)?.[1] ?? null;
+        if (code) setPendingInviteCode(code);
       }
     };
 
