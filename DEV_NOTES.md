@@ -2,12 +2,20 @@
 
 ## 프로젝트 개요
 링크 저장·분류 콘텐츠 아카이빙 앱 (Clip + you = Clipu)
-다른 앱에서 링크를 공유받아 저장하고, 목록으로 열람하는 앱
+다른 앱에서 링크를 공유받아 저장하고, 클립(폴더)으로 분류해 열람하는 앱
 
 ---
 
-## 기술 스택 & 버전
+## 현재 버전
+| 항목 | 값 |
+|---|---|
+| 앱 버전 | **1.0.1** |
+| iOS 빌드 번호 | 12 |
+| Android versionCode | 5 |
 
+---
+
+## 기술 스택
 | 항목 | 버전 |
 |---|---|
 | Expo SDK | 54.0.33 |
@@ -16,27 +24,85 @@
 | TypeScript | 5.9.2 |
 | @supabase/supabase-js | 2.105.4 |
 | @react-navigation/native | 7.2.4 |
-| @react-navigation/native-stack | 7.14.14 |
-| @react-native-async-storage/async-storage | 2.2.0 |
-| react-native-url-polyfill | 3.0.0 |
-| react-native-screens | 4.16.0 |
 | react-native-safe-area-context | 5.6.0 |
 
 ---
 
 ## 인프라
-
 | 항목 | 값 |
 |---|---|
 | GitHub | https://github.com/jnyoong/clipu |
-| Supabase Project URL | https://qzgohbxvpxtsquaygsmh.supabase.co |
-| Supabase 키 종류 | Publishable Key (sb_publishable_...) |
+| Supabase URL | https://qzgohbxvpxtsquaygsmh.supabase.co |
+| Expo 프로젝트 | https://expo.dev/accounts/j.nyoong/projects/clipu |
 | 브랜치 | main |
 
-### Supabase 설정 (완료)
-- Authentication > Email > **Confirm email: OFF** (회원가입 즉시 로그인)
-- `links` 테이블 생성 완료 (supabase/schema.sql 실행 완료)
-- RLS 활성화, 본인 데이터만 조회/삽입/삭제 가능
+---
+
+## 배포 현황
+
+### iOS
+- **배포 방식:** EAS Build (클라우드) → TestFlight → 내부 테스트
+- **빌드 명령 (맥북에서):**
+  ```bash
+  git stash && git pull
+  npx eas-cli build --platform ios
+  npx eas-cli submit --platform ios
+  ```
+- **환경변수:** EAS 서버에 등록됨 (`eas env:create`로 등록, 매번 할 필요 없음)
+- **Apple 계정:** kahn201130@gmail.com / Team: Y9Q88U5QG3
+- **Bundle ID:** com.clipu.app
+- **주의:** 빌드 전 반드시 `git stash && git pull` 먼저 할 것 (EAS가 app.json을 자동 수정하므로 충돌 발생함)
+
+### Android
+- **배포 방식:** 로컬 Gradle 빌드 → Play Console 내부 테스트
+- **빌드 명령 (Windows에서):**
+  ```bash
+  export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
+  export ANDROID_HOME="/c/Users/User/AppData/Local/Android/Sdk"
+  cd android && ./gradlew bundleRelease -x lint
+  ```
+- **AAB 파일:** `android/app/build/outputs/bundle/release/app-release.aab`
+- **새 버전 배포 시:** `android/app/build.gradle`의 `versionCode` 1 증가 필요
+
+---
+
+## 어드민 페이지
+**URL:** https://jnyoong.github.io/clipu/admin.html
+
+### 기능
+- 전체 사용자 목록 (이메일, 기기 종류, 링크수, 최근 로그인, 가입일)
+- 사용자 데이터 삭제
+- 통계 (총 가입자 / 링크 / 클립 수)
+
+### 어드민 계정 설정 방법
+1. Supabase → Authentication → Users → 본인 계정 클릭
+2. SQL Editor에서 실행:
+```sql
+UPDATE auth.users 
+SET raw_user_meta_data = raw_user_meta_data || '{"is_admin": true}'::jsonb
+WHERE email = '본인이메일@gmail.com';
+```
+
+---
+
+## Supabase 스키마
+
+### 테이블
+```
+links:              id, user_id, url, title, description, image_url, collection_id, created_at
+collections:        id, user_id, name, is_shared, invite_code, created_at
+collection_members: id, collection_id, user_id, role('owner'|'member'), created_at
+```
+
+### RPC 함수 (Supabase에 등록된 것들)
+| 함수 | 설명 |
+|---|---|
+| `get_collection_by_invite(code)` | 초대 코드로 클립 정보 조회 |
+| `join_collection(code)` | 초대 코드로 클립 참여 (최대 30명) |
+| `get_collection_members(coll_id)` | 클립 멤버 목록 조회 (이메일 포함) |
+| `delete_my_account()` | 본인 계정 + 데이터 완전 삭제 |
+| `admin_list_users()` | 전체 유저 목록 (어드민 전용) |
+| `admin_delete_user(target_user_id)` | 유저 삭제 (어드민 전용) |
 
 ---
 
@@ -44,173 +110,69 @@
 
 ```
 clipu/
-├── App.tsx                  # 진입점. AuthProvider + NavigationContainer + 조건부 스택
-├── contexts/
-│   └── AuthContext.tsx      # 세션 상태 관리 (session, loading, signOut)
+├── App.tsx                    # 진입점. SafeAreaProvider + ErrorBoundary + AuthProvider
+├── contexts/AuthContext.tsx   # 세션 상태 관리
 ├── lib/
-│   ├── supabase.ts          # Supabase 클라이언트 (AsyncStorage 어댑터)
-│   └── og.ts               # OG 메타데이터 추출 (title, description, image_url)
+│   ├── supabase.ts            # Supabase 클라이언트
+│   ├── og.ts                  # OG 메타데이터 추출
+│   └── saveLink.ts            # 링크 저장 공통 함수
 ├── screens/
-│   ├── LoginScreen.tsx      # 이메일/비밀번호 로그인
-│   ├── SignupScreen.tsx     # 이메일/비밀번호 회원가입
-│   ├── HomeScreen.tsx       # 링크 목록 (카드 UI, 탭=열기, 길게=삭제)
-│   └── AddLinkScreen.tsx   # URL 입력 → OG 추출 → Supabase 저장
-├── supabase/
-│   └── schema.sql          # links 테이블 + RLS 정책 DDL
-└── .env                    # Supabase URL + Key (gitignore 처리됨)
+│   ├── LoginScreen.tsx        # 로그인
+│   ├── SignupScreen.tsx       # 회원가입 (이메일 중복/비밀번호 검증, platform 저장)
+│   ├── HomeScreen.tsx         # 링크 목록 + 클립 탭 + 설정 버튼 + 편집 모드
+│   ├── SettingsModal.tsx      # 닉네임 수정 + 회원탈퇴
+│   ├── AddLinkScreen.tsx      # 링크 저장
+│   ├── CollectionsScreen.tsx  # 클립 관리
+│   ├── SharePickerScreen.tsx  # Android 공유 인텐트 처리
+│   └── JoinCollectionScreen.tsx # 공유 클립 참여
+├── docs/
+│   ├── admin.html             # 어드민 웹페이지
+│   ├── join.html              # 초대 링크 중간 페이지
+│   └── privacy.html           # 개인정보처리방침
+├── eas.json                   # EAS 빌드 설정
+└── app.json                   # Expo 앱 설정 (버전, 번들ID 등)
 ```
 
 ---
 
-## Supabase 테이블 스키마
+## 완료된 기능
 
-```sql
-links (
-  id          uuid primary key,
-  user_id     uuid references auth.users,
-  url         text,
-  title       text,
-  description text,
-  image_url   text,
-  created_at  timestamptz
-)
-```
+### 인증
+- 로그인 / 회원가입 (이메일+비밀번호)
+- 회원가입 시 검증: 영문+숫자 8자 이상, 비밀번호 확인, 중복 이메일 처리
+- 세션 자동 유지 (AsyncStorage)
+- 로그아웃 / 회원탈퇴
 
----
+### 홈 화면
+- 링크 카드 목록 (이미지·제목·도메인·설명)
+- 클립(저장소) 탭 필터 (전체 / 클립별 / 미분류)
+- 탭 길게 누르기 → 초대 링크 공유 / 멤버 보기 / 전환 / 삭제
+- **설정 버튼 (👤):** 편집 / 설정 / 로그아웃 메뉴
+- **편집 모드:** 링크 체크박스 다중 선택 삭제 + 클립 탭 빨간 − 버튼 삭제
+- **공유 멤버 보기:** 멤버 수(X명/30명) + 이메일 목록 모달
 
-## 테스트 환경
-
-| 플랫폼 | 방법 |
-|---|---|
-| iOS | iPhone 실기기 + Expo Go (App Store 설치) → QR 스캔 |
-| Android | Android Studio 에뮬레이터 (Pixel 8, API 35) |
-
-### 서버 실행 방법
-```
-# VS Code 터미널 → Command Prompt로 전환 후
-npm start
-
-# Android 에뮬레이터로 열기 (서버 켠 상태에서)
-a 키 입력
-```
-**주의:** PowerShell에서는 npm 실행 안 됨. 반드시 Command Prompt 사용.
-
----
-
-## 완료된 개발 현황
-
-### 1단계 — 프로젝트 세팅 ✅
-- Expo blank-TypeScript 초기화
-- Supabase 클라이언트 연결
-- GitHub remote 연결 및 초기 push
-
-### 2단계 — 인증 ✅
-- 로그인 화면 (LoginScreen)
-- 회원가입 화면 (SignupScreen)
-- 세션 자동 유지 (AuthContext + AsyncStorage)
-- 로그아웃
-
-### 3단계 — 링크 저장 & 열람 ✅
+### 링크
 - URL 입력 → OG 메타데이터 자동 추출 → Supabase 저장
-- 홈 화면: 카드 목록 (이미지·제목·도메인·설명)
-- 카드 탭 → 브라우저로 열기
+- 클립에 분류 가능
 - 카드 길게 누르기 → 삭제
 
-### 4단계 — 에뮬레이터 ✅
-- Android Studio + Pixel 8 AVD 세팅
-- iOS + Android 동시 정상 동작 확인
+### 공유 클립
+- 클립 생성 시 공유 설정 토글
+- 일반 클립 → 공유 클립 전환 가능
+- 초대 링크 공유: `https://jnyoong.github.io/clipu/join?code=CODE`
+- 최대 30명, owner/member 권한 구분
 
-### 5단계 — 공유 클립 & 협업 ✅
-- 공유 클립 생성 (클립 추가 시 공유 토글)
-- 초대 링크(`clipu://join/CODE`) 딥링크 참여 흐름
-- owner/member 권한 구분, 클립 삭제 / 나가기
-- **공유 클립으로 전환 (2026-05-12)**: 기존 일반 클립을 꾹 눌러 공유 클립으로 전환 가능
-- **최대 참여 인원 30명 (2026-05-12)**: 기존 8명에서 30명으로 확대
-  - `JoinCollectionScreen` 메시지 변경
-  - Supabase `join_collection` 함수 수정 필요 → 아래 참고
-
----
-
-## 다음 개발 순서
-
-### 5단계 — Android 공유 기능 (다음 할 일)
-다른 앱(카카오톡, 브라우저 등)에서 링크 공유 시 Clipu로 받기
-
-**주의: 이 단계부터 개발 방식이 바뀜**
-- `expo-share-intent` 패키지 설치
-- `npx expo prebuild` 실행 → `android/`, `ios/` 폴더 생성
-- 이후 Expo Go 대신 **Development Build** 사용
-- Android는 에뮬레이터에서 직접 빌드 실행 가능
-- iOS는 Apple Developer 계정 필요 ($99/년)
-
-```bash
-# 진행 순서 (다음 세션)
-npm install expo-share-intent
-npx expo prebuild
-# 이후 Claude Code에게 share intent 코드 작업 요청
-```
-
-### 6단계 — iOS 공유 기능
-- Apple Developer 계정 구매 후 진행
-- EAS Build로 iOS Development Build 생성
-- TestFlight로 iPhone에 설치
-
-### 7단계 — 태그 / 검색 (MVP 이후)
-- 링크에 태그 추가
-- 태그로 필터링
-- 제목·URL 검색
-
-### 8단계 — 앱스토어 출시
-- Android: Google Play ($25 일회성)
-- iOS: App Store ($99/년 Apple 계정 필요)
-
----
-
-## Supabase join_collection 함수 (인원 30명 제한)
-
-join_collection RPC 함수의 인원 제한을 30명으로 변경하려면 **Supabase SQL Editor**에서 아래 실행:
-
-```sql
-create or replace function public.join_collection(code text)
-returns text
-language plpgsql
-security definer
-as $$
-declare
-  col_id uuid;
-  member_count int;
-begin
-  select id into col_id
-    from public.collections
-   where invite_code = code and is_shared = true;
-
-  if col_id is null then
-    return 'not_found';
-  end if;
-
-  select count(*) into member_count
-    from public.collection_members
-   where collection_id = col_id;
-
-  if member_count >= 30 then
-    return 'full';
-  end if;
-
-  insert into public.collection_members (collection_id, user_id, role)
-    values (col_id, auth.uid(), 'member')
-    on conflict do nothing;
-
-  return 'ok';
-end;
-$$;
-```
+### 설정
+- 닉네임 수정 (기본값: 이메일 @ 앞부분)
+- 닉네임은 Supabase user_metadata에 저장
 
 ---
 
 ## 알아두면 좋은 것들
 
-- OG 추출은 클라이언트(앱)에서 직접 fetch. React Native는 CORS 없음.
-- `.env`는 gitignore 처리됨. Supabase 키는 로컬에만 존재.
-- `EXPO_PUBLIC_` 접두사 붙은 변수만 앱에서 접근 가능.
-- 공유 기능 prebuild 후에는 `android/`, `ios/` 폴더가 생기고 Expo Go 못 씀.
-- PowerShell에서 npm 안 됨 → VS Code 터미널을 Command Prompt로 전환 필요.
+- **iOS 빌드 충돌:** EAS가 app.json을 자동 수정함. 빌드 전 `git stash && git pull` 필수.
+- **expo-share-intent 플러그인 제거:** iOS ShareExtension 충돌 문제로 plugins에서 제거. Android intent filter는 로컬 android/ 폴더에 유지.
+- **환경변수:** `.env`는 gitignore. EAS 환경변수는 `eas env:create`로 등록 (1회만).
+- **Android 빌드:** 로컬 Gradle로만 빌드. EAS Android 빌드는 키스토어 설정 필요.
+- **키스토어:** `android/app/clipu-release.keystore` + `_backup/` 폴더 백업 (절대 분실 금지).
+- **어드민 접근:** is_admin 메타데이터 없으면 로그인해도 접근 차단됨.
