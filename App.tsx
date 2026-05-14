@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { useShareIntent } from 'expo-share-intent';
@@ -22,7 +22,7 @@ export type AuthStackParamList = {
 };
 
 export type AppStackParamList = {
-  Home: undefined;
+  Home: { joinedAt?: number } | undefined;
   AddLink: { collectionId?: string | null };
   Collections: undefined;
 };
@@ -30,7 +30,6 @@ export type AppStackParamList = {
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
-// Android 전용 공유 인텐트 핸들러 — iOS에서는 마운트하지 않아 훅 호출 자체를 막음
 function AndroidShareHandler({ onShare }: { onShare: (url: string) => void }) {
   const { shareIntent, resetShareIntent } = useShareIntent();
   useEffect(() => {
@@ -42,7 +41,6 @@ function AndroidShareHandler({ onShare }: { onShare: (url: string) => void }) {
   return null;
 }
 
-// 에러 발생 시 흰 화면 대신 에러 메시지를 표시
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { error: Error | null }
@@ -68,6 +66,7 @@ function AppContent() {
   const { session, loading } = useAuth();
   const [sharedUrl, setSharedUrl] = useState<string | null>(null);
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
+  const navRef = useRef<NavigationContainerRef<AppStackParamList>>(null);
 
   useEffect(() => {
     const handleUrl = (url: string) => {
@@ -98,7 +97,10 @@ function AppContent() {
     <Modal visible transparent animationType="slide">
       <JoinCollectionScreen
         inviteCode={pendingInviteCode}
-        onJoined={() => setPendingInviteCode(null)}
+        onJoined={() => {
+          setPendingInviteCode(null);
+          navRef.current?.navigate('Home', { joinedAt: Date.now() });
+        }}
         onCancel={() => setPendingInviteCode(null)}
       />
     </Modal>
@@ -138,7 +140,7 @@ function AppContent() {
   return (
     <>
       {Platform.OS === 'android' && <AndroidShareHandler onShare={setSharedUrl} />}
-      <NavigationContainer>
+      <NavigationContainer ref={navRef}>
         <StatusBar style="auto" />
         <AppStack.Navigator screenOptions={{ headerShown: false }}>
           <AppStack.Screen name="Home" component={HomeScreen} />

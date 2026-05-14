@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,15 +13,18 @@ import {
   TextInput,
   Share,
   Switch,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { getDomain } from '../lib/og';
 import { AppStackParamList } from '../App';
 import { Collection } from './CollectionsScreen';
+
+type Member = { user_id: string; role: string; email: string };
 
 type Link = {
   id: string;
@@ -39,6 +42,7 @@ type Props = {
 
 export default function HomeScreen({ navigation }: Props) {
   const { session, signOut } = useAuth();
+  const route = useRoute<RouteProp<AppStackParamList, 'Home'>>();
   const [links, setLinks] = useState<Link[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null | 'all'>('all');
@@ -47,6 +51,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [newCollectionName, setNewCollectionName] = useState('');
   const [newCollectionIsShared, setNewCollectionIsShared] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [membersModal, setMembersModal] = useState<{ col: Collection; members: Member[]; loadingMembers: boolean } | null>(null);
   const inputRef = useRef<TextInput>(null);
 
   const fetchAll = async () => {
@@ -78,6 +83,10 @@ export default function HomeScreen({ navigation }: Props) {
       fetchAll();
     }, [])
   );
+
+  useEffect(() => {
+    if (route.params?.joinedAt) fetchAll();
+  }, [route.params?.joinedAt]);
 
   const filteredLinks =
     selectedCollectionId === 'all'
@@ -174,10 +183,21 @@ export default function HomeScreen({ navigation }: Props) {
     );
   };
 
+  const handleViewMembers = async (col: Collection) => {
+    setMembersModal({ col, members: [], loadingMembers: true });
+    const { data, error } = await supabase.rpc('get_collection_members', { coll_id: col.id });
+    if (!error && data) {
+      setMembersModal({ col, members: data as Member[], loadingMembers: false });
+    } else {
+      setMembersModal((prev) => prev ? { ...prev, loadingMembers: false } : null);
+    }
+  };
+
   const handleCollectionTabLongPress = (col: Collection) => {
     const buttons: any[] = [];
     if (col.is_shared) {
       buttons.push({ text: '초대 링크 공유', onPress: () => shareInviteLink(col) });
+      buttons.push({ text: '공유 멤버 보기', onPress: () => handleViewMembers(col) });
     } else if (col.role === 'owner') {
       buttons.push({ text: '공유 클립으로 전환', onPress: () => handleConvertToShared(col) });
     }
@@ -362,6 +382,50 @@ export default function HomeScreen({ navigation }: Props) {
       >
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
+
+      {membersModal && (
+        <Modal visible transparent animationType="slide">
+          <View style={styles.membersOverlay}>
+            <TouchableOpacity style={styles.membersBackdrop} onPress={() => setMembersModal(null)} activeOpacity={1} />
+            <View style={styles.membersSheet}>
+              <View style={styles.membersHandle} />
+              <Text style={styles.membersTitle}>{membersModal.col.name}</Text>
+              {membersModal.loadingMembers ? (
+                <ActivityIndicator color="#2563EB" style={{ marginVertical: 24 }} />
+              ) : (
+                <>
+                  <Text style={styles.membersCount}>
+                    멤버 {membersModal.members.length}명 / 30명
+                  </Text>
+                  <FlatList
+                    data={membersModal.members}
+                    keyExtractor={(m) => m.user_id}
+                    style={{ width: '100%', maxHeight: 300 }}
+                    renderItem={({ item }) => (
+                      <View style={styles.memberRow}>
+                        <View style={styles.memberInfo}>
+                          <Text style={styles.memberEmail} numberOfLines={1}>
+                            {item.email || item.user_id.slice(0, 8) + '...'}
+                          </Text>
+                          {item.user_id === session?.user.id && (
+                            <Text style={styles.memberMe}>나</Text>
+                          )}
+                        </View>
+                        {item.role === 'owner' && (
+                          <Text style={styles.memberOwner}>방장</Text>
+                        )}
+                      </View>
+                    )}
+                  />
+                </>
+              )}
+              <TouchableOpacity style={styles.membersClose} onPress={() => setMembersModal(null)}>
+                <Text style={styles.membersCloseText}>닫기</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -573,5 +637,87 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: '#fff',
     lineHeight: 32,
+  },
+  membersOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  membersBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  membersSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  membersHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    marginBottom: 16,
+  },
+  membersTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111',
+    marginBottom: 4,
+  },
+  membersCount: {
+    fontSize: 14,
+    color: '#2563EB',
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    width: '100%',
+  },
+  memberInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
+  },
+  memberEmail: {
+    fontSize: 14,
+    color: '#333',
+    flex: 1,
+  },
+  memberMe: {
+    fontSize: 11,
+    color: '#2563EB',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  memberOwner: {
+    fontSize: 11,
+    color: '#fff',
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  membersClose: {
+    marginTop: 16,
+    paddingVertical: 10,
+  },
+  membersCloseText: {
+    fontSize: 15,
+    color: '#888',
   },
 });
