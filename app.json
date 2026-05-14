@@ -36,6 +36,10 @@
           "androidIntentFilters": ["text/*"],
           "androidMainActivityAttributes": {
             "android:launchMode": "singleTask"
+          },
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1
           }
         }
       ]
