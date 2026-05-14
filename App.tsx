@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -29,18 +29,44 @@ export type AppStackParamList = {
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
-function AppContent() {
-  const { session, loading } = useAuth();
+// Android 전용 공유 인텐트 핸들러 — iOS에서는 마운트하지 않아 훅 호출 자체를 막음
+function AndroidShareHandler({ onShare }: { onShare: (url: string) => void }) {
   const { shareIntent, resetShareIntent } = useShareIntent();
-  const [sharedUrl, setSharedUrl] = useState<string | null>(null);
-  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
-
   useEffect(() => {
     if (!shareIntent?.webUrl) return;
     const url = shareIntent.webUrl;
     resetShareIntent();
-    setSharedUrl(url);
+    onShare(url);
   }, [shareIntent?.webUrl]);
+  return null;
+}
+
+// 에러 발생 시 흰 화면 대신 에러 메시지를 표시
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      const err = this.state.error as Error;
+      return (
+        <View style={{ flex: 1, padding: 40, paddingTop: 80, backgroundColor: '#fff' }}>
+          <Text style={{ fontSize: 18, fontWeight: 'bold', color: 'red' }}>앱 오류</Text>
+          <Text selectable style={{ marginTop: 12 }}>{String(err.message)}</Text>
+          <Text selectable style={{ marginTop: 12, fontSize: 11, color: '#555' }}>{String(err.stack)}</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function AppContent() {
+  const { session, loading } = useAuth();
+  const [sharedUrl, setSharedUrl] = useState<string | null>(null);
+  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
 
   useEffect(() => {
     const handleUrl = (url: string) => {
@@ -80,6 +106,7 @@ function AppContent() {
   if (!session) {
     return (
       <>
+        {Platform.OS === 'android' && <AndroidShareHandler onShare={setSharedUrl} />}
         <NavigationContainer>
           <StatusBar style="auto" />
           <AuthStack.Navigator screenOptions={{ headerShown: false }}>
@@ -95,6 +122,7 @@ function AppContent() {
   if (sharedUrl) {
     return (
       <>
+        {Platform.OS === 'android' && <AndroidShareHandler onShare={setSharedUrl} />}
         <StatusBar style="light" />
         <SharePickerScreen
           sharedUrl={sharedUrl}
@@ -108,6 +136,7 @@ function AppContent() {
 
   return (
     <>
+      {Platform.OS === 'android' && <AndroidShareHandler onShare={setSharedUrl} />}
       <NavigationContainer>
         <StatusBar style="auto" />
         <AppStack.Navigator screenOptions={{ headerShown: false }}>
@@ -123,8 +152,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
