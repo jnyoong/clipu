@@ -138,7 +138,7 @@ export default function HomeScreen({ navigation }: Props) {
     if (!col.invite_code) return;
     try {
       await Share.share({
-        message: `"${col.name}" 클립에 초대합니다!\nclipu://join/${col.invite_code}`,
+        message: `"${col.name}" 클립에 초대합니다!\nhttps://jnyoong.github.io/clipu/join?code=${col.invite_code}`,
       });
     } catch (_) {}
   };
