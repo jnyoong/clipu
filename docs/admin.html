@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clipu 어드민</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #F9FAFB; color: #111; }
+    .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+    h1 { font-size: 24px; font-weight: 700; color: #2563EB; }
+    .badge { background: #EFF6FF; color: #2563EB; padding: 4px 10px; border-radius: 8px; font-size: 13px; }
+
+    /* Login */
+    #loginBox { background: #fff; border-radius: 20px; padding: 40px; max-width: 400px; margin: 80px auto; box-shadow: 0 4px 24px rgba(0,0,0,0.08); text-align: center; }
+    #loginBox h2 { font-size: 20px; margin-bottom: 24px; }
+    #loginBox input { width: 100%; border: 1px solid #E5E7EB; border-radius: 10px; padding: 12px 16px; font-size: 15px; margin-bottom: 12px; }
+    #loginBox button { width: 100%; background: #2563EB; color: #fff; border: none; border-radius: 10px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer; }
+    #loginBox button:hover { background: #1d4ed8; }
+    .error { color: #EF4444; font-size: 13px; margin-top: 8px; }
+
+    /* Dashboard */
+    #dashboard { display: none; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .stat-card { background: #fff; border-radius: 14px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .stat-card .value { font-size: 32px; font-weight: 700; color: #2563EB; }
+    .stat-card .label { font-size: 13px; color: #888; margin-top: 4px; }
+
+    .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+    .search-bar { width: 100%; border: 1px solid #E5E7EB; border-radius: 10px; padding: 10px 16px; font-size: 14px; margin-bottom: 16px; }
+
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    th { background: #F3F4F6; padding: 12px 16px; text-align: left; font-size: 13px; color: #555; font-weight: 600; }
+    td { padding: 14px 16px; border-top: 1px solid #F3F4F6; font-size: 14px; }
+    tr:hover td { background: #F9FAFB; }
+
+    .btn-delete { background: #FEF2F2; color: #EF4444; border: none; border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 500; }
+    .btn-delete:hover { background: #FECACA; }
+    .btn-logout { background: none; border: 1px solid #E5E7EB; border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer; color: #555; }
+    .btn-logout:hover { background: #F3F4F6; }
+
+    .loading { text-align: center; padding: 40px; color: #888; }
+    .tag-admin { background: #2563EB; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 6px; margin-left: 6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- 로그인 -->
+    <div id="loginBox">
+      <h2>🔐 Clipu 어드민</h2>
+      <input type="email" id="adminEmail" placeholder="이메일" />
+      <input type="password" id="adminPassword" placeholder="비밀번호" />
+      <button onclick="handleLogin()">로그인</button>
+      <p class="error" id="loginError"></p>
+    </div>
+
+    <!-- 대시보드 -->
+    <div id="dashboard">
+      <header>
+        <div>
+          <h1>Clipu 어드민</h1>
+          <span id="adminEmailBadge" class="badge"></span>
+        </div>
+        <button class="btn-logout" onclick="handleLogout()">로그아웃</button>
+      </header>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="value" id="statUsers">-</div>
+          <div class="label">총 가입자</div>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="statLinks">-</div>
+          <div class="label">총 링크</div>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="statCollections">-</div>
+          <div class="label">총 클립</div>
+        </div>
+      </div>
+
+      <div class="section-title">사용자 관리</div>
+      <input class="search-bar" type="text" id="searchInput" placeholder="이메일 검색..." oninput="filterUsers()" />
+      <div id="userTableWrap" class="loading">불러오는 중...</div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://qzgohbxvpxtsquaygsmh.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_YNvSkk_TQj9bPE4oqoaD3A_8Bx_5K0c';
+    const { createClient } = supabase;
+    const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let allUsers = [];
+
+    async function handleLogin() {
+      const email = document.getElementById('adminEmail').value.trim();
+      const password = document.getElementById('adminPassword').value;
+      document.getElementById('loginError').textContent = '';
+
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) { document.getElementById('loginError').textContent = '로그인 실패: ' + error.message; return; }
+
+      const isAdmin = data.user?.user_metadata?.is_admin === true;
+      if (!isAdmin) {
+        await sb.auth.signOut();
+        document.getElementById('loginError').textContent = '어드민 권한이 없어요.';
+        return;
+      }
+
+      showDashboard(data.user);
+    }
+
+    async function showDashboard(user) {
+      document.getElementById('loginBox').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+      document.getElementById('adminEmailBadge').textContent = user.email;
+      await loadStats();
+      await loadUsers();
+    }
+
+    async function loadStats() {
+      const { data: users } = await sb.rpc('admin_list_users');
+      const { count: linkCount } = await sb.from('links').select('*', { count: 'exact', head: true });
+      const { count: colCount } = await sb.from('collections').select('*', { count: 'exact', head: true });
+
+      document.getElementById('statUsers').textContent = users?.length ?? '-';
+      document.getElementById('statLinks').textContent = linkCount ?? '-';
+      document.getElementById('statCollections').textContent = colCount ?? '-';
+    }
+
+    async function loadUsers() {
+      const { data, error } = await sb.rpc('admin_list_users');
+      if (error) { document.getElementById('userTableWrap').innerHTML = '<p style="color:red">데이터 로드 실패: ' + error.message + '</p>'; return; }
+      allUsers = data || [];
+      renderUsers(allUsers);
+    }
+
+    function renderUsers(users) {
+      if (!users.length) { document.getElementById('userTableWrap').innerHTML = '<p class="loading">사용자 없음</p>'; return; }
+      const rows = users.map(u => `
+        <tr>
+          <td>${u.email || '-'}${u.email === document.getElementById('adminEmailBadge').textContent ? '<span class="tag-admin">나</span>' : ''}</td>
+          <td>${u.link_count ?? 0}개</td>
+          <td>${u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString('ko-KR') : '-'}</td>
+          <td>${new Date(u.created_at).toLocaleDateString('ko-KR')}</td>
+          <td><button class="btn-delete" onclick="deleteUser('${u.id}', '${u.email}')">삭제</button></td>
+        </tr>
+      `).join('');
+      document.getElementById('userTableWrap').innerHTML = `
+        <table>
+          <thead><tr><th>이메일</th><th>링크수</th><th>최근 로그인</th><th>가입일</th><th>관리</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function filterUsers() {
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      renderUsers(q ? allUsers.filter(u => (u.email || '').toLowerCase().includes(q)) : allUsers);
+    }
+
+    async function deleteUser(userId, email) {
+      if (!confirm(`"${email}" 사용자를 삭제할까요?\n모든 데이터가 영구 삭제됩니다.`)) return;
+      const { error } = await sb.rpc('admin_delete_user', { target_user_id: userId });
+      if (error) { alert('삭제 실패: ' + error.message); return; }
+      allUsers = allUsers.filter(u => u.id !== userId);
+      renderUsers(allUsers);
+      loadStats();
+    }
+
+    async function handleLogout() {
+      await sb.auth.signOut();
+      location.reload();
+    }
+
+    // 이미 로그인 상태 확인
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.user_metadata?.is_admin === true) showDashboard(session.user);
+    });
+  </script>
+</body>
+</html>
