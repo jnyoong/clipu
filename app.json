@@ -47,23 +47,6 @@
     ],
     "extra": {
       "eas": {
-        "build": {
-          "experimental": {
-            "ios": {
-              "appExtensions": [
-                {
-                  "targetName": "ShareExtension",
-                  "bundleIdentifier": "com.clipu.app.share-extension",
-                  "entitlements": {
-                    "com.apple.security.application-groups": [
-                      "group.com.clipu.app"
-                    ]
-                  }
-                }
-              ]
-            }
-          }
-        },
         "projectId": "95ce1c42-0416-4f76-a646-7abf284be7df"
       }
     }
