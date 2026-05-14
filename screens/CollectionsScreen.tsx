@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
@@ -96,8 +97,9 @@ export default function CollectionsScreen({ navigation }: Props) {
   };
 
   return (
+    <SafeAreaView style={styles.container}>
     <KeyboardAvoidingView
-      style={styles.container}
+      style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.header}>
@@ -155,6 +157,7 @@ export default function CollectionsScreen({ navigation }: Props) {
         />
       )}
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -164,7 +167,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 12,
     paddingBottom: 16,
     paddingHorizontal: 20,
     backgroundColor: '#fff',
