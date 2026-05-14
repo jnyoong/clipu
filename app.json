@@ -32,19 +32,6 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      [
-        "expo-share-intent",
-        {
-          "androidIntentFilters": [
-            "text/*"
-          ],
-          "androidMainActivityAttributes": {
-            "android:launchMode": "singleTask"
-          }
-        }
-      ]
-    ],
     "extra": {
       "eas": {
         "projectId": "95ce1c42-0416-4f76-a646-7abf284be7df"
