@@ -72,10 +72,6 @@ export default function LoginScreen({ navigation }: Props) {
         <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
           <Text style={styles.link}>계정이 없으신가요? 회원가입</Text>
         </TouchableOpacity>
-
-        <Text style={{ fontSize: 10, color: '#ccc', textAlign: 'center', marginTop: 24 }}>
-          SB: {process.env.EXPO_PUBLIC_SUPABASE_URL ? 'OK' : 'MISSING'}
-        </Text>
       </View>
     </KeyboardAvoidingView>
   );
