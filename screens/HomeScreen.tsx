@@ -349,7 +349,7 @@ export default function HomeScreen({ navigation }: Props) {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity onPress={handleSettingsPress} style={styles.settingsBtnWrap}>
-            <Ionicons name="person-circle-outline" size={30} color="#555" />
+            <Ionicons name="ellipsis-horizontal" size={24} color="#555" />
           </TouchableOpacity>
         )}
       </View>
