@@ -141,18 +141,23 @@
 
     function renderUsers(users) {
       if (!users.length) { document.getElementById('userTableWrap').innerHTML = '<p class="loading">사용자 없음</p>'; return; }
-      const rows = users.map(u => `
-        <tr>
-          <td>${u.email || '-'}${u.email === document.getElementById('adminEmailBadge').textContent ? '<span class="tag-admin">나</span>' : ''}</td>
-          <td>${u.link_count ?? 0}개</td>
-          <td>${u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString('ko-KR') : '-'}</td>
-          <td>${new Date(u.created_at).toLocaleDateString('ko-KR')}</td>
-          <td><button class="btn-delete" onclick="deleteUser('${u.id}', '${u.email}')">삭제</button></td>
-        </tr>
-      `).join('');
+      const rows = users.map(u => {
+        const meta = u.raw_user_meta_data || {};
+        const platform = meta.platform === 'ios' ? '🍎 iOS' : meta.platform === 'android' ? '🤖 Android' : '-';
+        const isMe = u.email === document.getElementById('adminEmailBadge').textContent;
+        return `
+          <tr>
+            <td>${u.email || '-'}${isMe ? '<span class="tag-admin">나</span>' : ''}</td>
+            <td>${platform}</td>
+            <td>${u.link_count ?? 0}개</td>
+            <td>${u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString('ko-KR') : '-'}</td>
+            <td>${new Date(u.created_at).toLocaleDateString('ko-KR')}</td>
+            <td><button class="btn-delete" onclick="deleteUser('${u.id}', '${u.email}')">삭제</button></td>
+          </tr>`;
+      }).join('');
       document.getElementById('userTableWrap').innerHTML = `
         <table>
-          <thead><tr><th>이메일</th><th>링크수</th><th>최근 로그인</th><th>가입일</th><th>관리</th></tr></thead>
+          <thead><tr><th>이메일</th><th>기기</th><th>링크수</th><th>최근 로그인</th><th>가입일</th><th>관리</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       `;

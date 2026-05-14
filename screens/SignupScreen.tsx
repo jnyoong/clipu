@@ -48,7 +48,11 @@ export default function SignupScreen({ navigation }: Props) {
   const handleSignup = async () => {
     if (!validate()) return;
     setLoading(true);
-    const { error } = await supabase.auth.signUp({ email: email.trim(), password });
+    const { error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: { platform: Platform.OS } },
+    });
     setLoading(false);
     if (error) {
       if (error.message.toLowerCase().includes('already registered') ||

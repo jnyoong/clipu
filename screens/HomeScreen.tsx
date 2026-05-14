@@ -14,7 +14,9 @@ import {
   Share,
   Switch,
   Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -346,8 +348,8 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.editDone}>완료</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity onPress={handleSettingsPress}>
-            <Text style={styles.settingsBtn}>⚙</Text>
+          <TouchableOpacity onPress={handleSettingsPress} style={styles.settingsBtnWrap}>
+            <Ionicons name="person-circle-outline" size={30} color="#555" />
           </TouchableOpacity>
         )}
       </View>
@@ -472,42 +474,47 @@ export default function HomeScreen({ navigation }: Props) {
       )}
 
       {membersModal && (
-        <Modal visible transparent animationType="slide">
-          <View style={styles.membersOverlay}>
-            <TouchableOpacity style={styles.membersBackdrop} onPress={() => setMembersModal(null)} activeOpacity={1} />
-            <View style={styles.membersSheet}>
-              <View style={styles.membersHandle} />
-              <Text style={styles.membersTitle}>{membersModal.col.name}</Text>
-              {membersModal.loadingMembers ? (
-                <ActivityIndicator color="#2563EB" style={{ marginVertical: 24 }} />
-              ) : (
-                <>
-                  <Text style={styles.membersCount}>멤버 {membersModal.members.length}명 / 30명</Text>
-                  <FlatList
-                    data={membersModal.members}
-                    keyExtractor={(m) => m.user_id}
-                    style={{ width: '100%', maxHeight: 300 }}
-                    renderItem={({ item }) => (
-                      <View style={styles.memberRow}>
-                        <View style={styles.memberInfo}>
-                          <Text style={styles.memberEmail} numberOfLines={1}>
-                            {item.email || item.user_id.slice(0, 8) + '...'}
-                          </Text>
-                          {item.user_id === session?.user.id && (
-                            <Text style={styles.memberMe}>나</Text>
-                          )}
-                        </View>
-                        {item.role === 'owner' && <Text style={styles.memberOwner}>방장</Text>}
-                      </View>
-                    )}
-                  />
-                </>
-              )}
-              <TouchableOpacity style={styles.membersClose} onPress={() => setMembersModal(null)}>
-                <Text style={styles.membersCloseText}>닫기</Text>
-              </TouchableOpacity>
+        <Modal visible transparent animationType="slide" onRequestClose={() => setMembersModal(null)}>
+          <TouchableWithoutFeedback onPress={() => setMembersModal(null)}>
+            <View style={styles.membersOverlay}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={styles.membersSheet}>
+                  <View style={styles.membersHandle} />
+                  <View style={styles.membersHeader}>
+                    <Text style={styles.membersTitle}>{membersModal.col.name}</Text>
+                    <TouchableOpacity onPress={() => setMembersModal(null)} style={styles.membersCloseBtn}>
+                      <Ionicons name="close" size={22} color="#888" />
+                    </TouchableOpacity>
+                  </View>
+                  {membersModal.loadingMembers ? (
+                    <ActivityIndicator color="#2563EB" style={{ marginVertical: 24 }} />
+                  ) : (
+                    <>
+                      <Text style={styles.membersCount}>멤버 {membersModal.members.length}명 / 30명</Text>
+                      <FlatList
+                        data={membersModal.members}
+                        keyExtractor={(m) => m.user_id}
+                        style={{ width: '100%', maxHeight: 300 }}
+                        renderItem={({ item }) => (
+                          <View style={styles.memberRow}>
+                            <View style={styles.memberInfo}>
+                              <Text style={styles.memberEmail} numberOfLines={1}>
+                                {item.email || item.user_id.slice(0, 8) + '...'}
+                              </Text>
+                              {item.user_id === session?.user.id && (
+                                <Text style={styles.memberMe}>나</Text>
+                              )}
+                            </View>
+                            {item.role === 'owner' && <Text style={styles.memberOwner}>방장</Text>}
+                          </View>
+                        )}
+                      />
+                    </>
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
             </View>
-          </View>
+          </TouchableWithoutFeedback>
         </Modal>
       )}
     </SafeAreaView>
@@ -522,7 +529,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
   logo: { fontSize: 24, fontWeight: '700', color: '#2563EB' },
-  settingsBtn: { fontSize: 22, color: '#555' },
+  settingsBtnWrap: { padding: 2 },
   editDone: { fontSize: 15, color: '#2563EB', fontWeight: '600' },
   tabsWrapper: {
     height: 52, backgroundColor: '#fff',
@@ -601,15 +608,16 @@ const styles = StyleSheet.create({
     shadowColor: '#2563EB', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6,
   },
   fabText: { fontSize: 28, color: '#fff', lineHeight: 32 },
-  membersOverlay: { flex: 1, justifyContent: 'flex-end' },
-  membersBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  membersOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   membersSheet: {
     backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
     paddingTop: 12, paddingBottom: 40, paddingHorizontal: 20, alignItems: 'center',
   },
   membersHandle: { width: 36, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, marginBottom: 16 },
-  membersTitle: { fontSize: 18, fontWeight: '700', color: '#111', marginBottom: 4 },
-  membersCount: { fontSize: 14, color: '#2563EB', fontWeight: '600', marginBottom: 16 },
+  membersHeader: { flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'space-between', marginBottom: 4 },
+  membersTitle: { fontSize: 18, fontWeight: '700', color: '#111' },
+  membersCloseBtn: { padding: 4 },
+  membersCount: { fontSize: 14, color: '#2563EB', fontWeight: '600', marginBottom: 16, alignSelf: 'flex-start' },
   memberRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', width: '100%',
@@ -624,6 +632,4 @@ const styles = StyleSheet.create({
     fontSize: 11, color: '#fff', backgroundColor: '#2563EB',
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, overflow: 'hidden',
   },
-  membersClose: { marginTop: 16, paddingVertical: 10 },
-  membersCloseText: { fontSize: 15, color: '#888' },
 });
