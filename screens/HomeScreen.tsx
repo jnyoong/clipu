@@ -264,29 +264,30 @@ export default function HomeScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.tabsScroll}
-        contentContainerStyle={styles.tabs}
-      >
-        {tabs.map((tab) => (
-          <TouchableOpacity
-            key={String(tab.id)}
-            style={[styles.tab, selectedCollectionId === tab.id && styles.tabActive]}
-            onPress={() => setSelectedCollectionId(tab.id)}
-            onLongPress={() => tab.col && handleCollectionTabLongPress(tab.col)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabText, selectedCollectionId === tab.id && styles.tabTextActive]}>
-              {tab.col?.is_shared ? '🔗 ' : ''}{tab.label}
-            </Text>
+      <View style={styles.tabsWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabs}
+        >
+          {tabs.map((tab) => (
+            <TouchableOpacity
+              key={String(tab.id)}
+              style={[styles.tab, selectedCollectionId === tab.id && styles.tabActive]}
+              onPress={() => setSelectedCollectionId(tab.id)}
+              onLongPress={() => tab.col && handleCollectionTabLongPress(tab.col)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, selectedCollectionId === tab.id && styles.tabTextActive]}>
+                {tab.col?.is_shared ? '🔗 ' : ''}{tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity style={styles.tabAdd} onPress={openAddCollection}>
+            <Text style={styles.tabAddText}>＋</Text>
           </TouchableOpacity>
-        ))}
-        <TouchableOpacity style={styles.tabAdd} onPress={openAddCollection}>
-          <Text style={styles.tabAddText}>＋</Text>
-        </TouchableOpacity>
-      </ScrollView>
+        </ScrollView>
+      </View>
 
       {addingCollection && (
         <View style={styles.addCollectionContainer}>
@@ -390,10 +391,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#888',
   },
-  tabsScroll: {
-    flexGrow: 0,
-    flexShrink: 0,
-    height: 50,
+  tabsWrapper: {
+    height: 52,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
@@ -403,7 +402,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    gap: 8,
   },
   tab: {
     paddingHorizontal: 14,
@@ -411,6 +409,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#F3F4F6',
     alignSelf: 'center',
+    marginRight: 8,
   },
   tabActive: {
     backgroundColor: '#2563EB',
@@ -430,6 +429,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#D1D5DB',
     alignSelf: 'center',
+    marginRight: 8,
   },
   tabAddText: {
     fontSize: 14,
