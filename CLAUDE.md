@@ -2,7 +2,8 @@
 
 ## 기본 규칙
 - **항상 한국어**로만 응답
-- 코드 수정 완료 시 **iOS/Android 동시** 빌드+배포 안내까지 마무리
+- 코드 수정 완료 시 **Android AAB 빌드까지 자동 실행** 후 완료 안내
+- iOS 배포 안내는 맥북 직접 빌드 방식으로 안내
 - 중요한 결정은 사용자 확인 후 진행
 
 ---
@@ -12,50 +13,73 @@
 - **GitHub:** https://github.com/jnyoong/clipu
 - **Supabase:** https://qzgohbxvpxtsquaygsmh.supabase.co
 - **어드민:** https://jnyoong.github.io/clipu/admin.html
-- **현재 버전:** 1.0.1 (iOS 빌드 12 / Android versionCode 6)
+- **현재 버전:** 1.1.1 (iOS 빌드 15 / Android versionCode 9)
 
 ---
 
 ## 배포 프로세스 (수정 시 항상 이 순서로)
 
-### 1. Android 빌드 (Windows에서 직접)
+### 1. Android 빌드 (Windows에서 — 코드 수정 후 자동 실행)
 ```bash
-# versionCode 1 증가 후 (android/app/build.gradle)
+# 1) android/app/build.gradle versionCode 1 증가
+# 2) 빌드 실행
 export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
 export ANDROID_HOME="/c/Users/User/AppData/Local/Android/Sdk"
 cd android && ./gradlew bundleRelease -x lint
 ```
 - AAB 파일: `android/app/build/outputs/bundle/release/app-release.aab`
-- **배포:** Play Console → 내부 테스트 → 새 버전 만들기 → AAB 업로드
+- **배포:** Play Console → 내부 테스트 → 새 버전 만들기 → AAB 업로드 (사용자가 직접)
 
-### 2. iOS 빌드 (맥북에서)
+### 2. iOS 빌드 (맥북에서 — Xcode 직접 빌드 방식)
+EAS 클라우드 빌드 한도 소진으로 로컬 Xcode 빌드 방식 사용 중.
+
 ```bash
-git stash && git pull
-npx eas-cli build --platform ios
+# 맥북 터미널에서 순서대로 실행
+cd ~/clipu && git pull
+# app.json buildNumber 1 증가 (예: "15" → "16")
+sed -i '' 's/"buildNumber": "현재번호"/"buildNumber": "새번호"/' app.json
+# .env 파일 생성 (없으면 흰화면 발생)
+printf 'EXPO_PUBLIC_SUPABASE_URL=https://qzgohbxvpxtsquaygsmh.supabase.co\nEXPO_PUBLIC_SUPABASE_KEY=sb_publishable_YNvSkk_TQj9bPE4oqoaD3A_8Bx_5K0c\n' > .env
+# ios 폴더 재생성
+npx expo prebuild --platform ios --clean
+cd ios && pod install && cd ..
 ```
-- **제출: Transporter 앱 사용** (`eas submit` 사용 금지 — TestFlight 단계에서 hang됨)
-- expo.dev → Builds → 최신 빌드 → .ipa 다운로드 → Transporter 드래그 → Deliver
+
+그 다음 Xcode에서:
+1. `open ios/clipu.xcworkspace`
+2. 각 타겟(clipu, ShareExtension) → Signing & Capabilities → Automatically manage signing 체크
+3. Team: `junhyeong park (Y9Q88U5QG3)` 선택
+4. **`Product` → `Archive`**
+5. Organizer → `Distribute App` → `App Store Connect` → `Upload`
+6. TestFlight에서 확인 후 Transporter 불필요 (Xcode에서 직접 업로드)
+
+**주의사항:**
+- `.env` 파일 없으면 흰화면 발생 (Supabase 키 미포함)
+- `buildNumber` 반드시 증가 (같은 번호 재업로드 불가)
+- EAS 클라우드 빌드 월 한도 초과 시 이 방식 사용
 
 ### 3. 버전 업 시 체크리스트
-- [ ] `app.json` version 및 ios.buildNumber 증가
+- [ ] `app.json` ios.buildNumber 증가
 - [ ] `android/app/build.gradle` versionCode 증가
 - [ ] `DEV_NOTES.md` 버전 현황 업데이트
 
 ---
 
 ## 빌드 주의사항
-- iOS 빌드 전 반드시 `git stash && git pull` 먼저 (EAS가 app.json 자동 수정 → 충돌)
-- `expo-share-intent` 플러그인은 app.json plugins에서 **제거됨** (iOS ShareExtension 충돌)
-  Android intent filter는 로컬 `android/` 폴더에 유지
-- EAS 환경변수(Supabase 키)는 서버에 등록됨 — 매번 등록 불필요
+- `android/` 폴더는 `.gitignore`에 포함됨 — `build.gradle` 수정은 로컬에서만
+- `expo-share-intent` 플러그인: app.json plugins에 등록됨 (v1.1.1에서 재활성화)
+  `androidIntentFilters: []` 설정으로 Android는 로컬 AndroidManifest.xml 사용
+- iOS 흰화면 → `.env` 파일 확인 (Xcode 빌드 시 환경변수 수동 필요)
+- Xcode 빌드 중 `Distribution Certificate` 오류 → Xcode Settings → Accounts → Manage Certificates → `Apple Distribution` 새로 생성
 
 ---
 
 ## 주요 파일
 | 파일 | 역할 |
 |---|---|
-| `App.tsx` | 진입점, 딥링크 처리, SafeAreaProvider |
-| `screens/HomeScreen.tsx` | 링크 목록, 클립 탭, 설정 버튼, 편집 모드 |
+| `App.tsx` | 진입점, 딥링크 처리, ShareHandler (iOS+Android 공유 인텐트) |
+| `screens/HomeScreen.tsx` | 링크 목록, 클립 탭, 스와이프 삭제, 하트, 말풍선, 편집 모드 |
+| `screens/SharePickerScreen.tsx` | 외부 공유 수신 시 클립 선택 화면 |
 | `screens/SettingsModal.tsx` | 닉네임 수정, 회원탈퇴 |
 | `screens/SignupScreen.tsx` | 회원가입 (검증 포함) |
 | `docs/admin.html` | 어드민 웹페이지 |
@@ -65,10 +89,18 @@ npx eas-cli build --platform ios
 
 ---
 
+## Supabase 테이블
+```
+links:              id, user_id, url, title, description, image_url, collection_id, created_at
+collections:        id, user_id, name, is_shared, invite_code, created_at
+collection_members: id, collection_id, user_id, role('owner'|'member'), created_at
+link_reactions:     link_id, user_id, created_at  (하트 기능)
+```
+
 ## Supabase RPC 함수
 - `get_collection_by_invite(code)` — 초대코드로 클립 조회
 - `join_collection(code)` — 클립 참여 (최대 30명)
-- `get_collection_members(coll_id)` — 멤버 목록 (이메일 포함)
+- `get_collection_members(coll_id)` — 멤버 목록 (nickname 포함, SECURITY DEFINER)
 - `delete_my_account()` — 회원탈퇴
 - `admin_list_users()` / `admin_delete_user(id)` — 어드민 전용
 
@@ -76,6 +108,6 @@ npx eas-cli build --platform ios
 
 ## 알려진 이슈 & 해결책
 - **딥링크 파싱:** `ExpoLinking.parse('clipu://join/CODE')` → hostname='join', path='CODE'
-  path에서 'join/CODE' 패턴 찾으면 안 됨. hostname 체크 필요 (App.tsx 수정 완료)
-- **iOS 탭바 미표시:** SafeAreaProvider 없으면 SafeAreaView가 iOS에서 inset 0으로 처리됨
-- **공유클립 초대링크:** `clipu://` 직접 링크 대신 `https://jnyoong.github.io/clipu/join?code=` 형식 사용
+- **iOS 흰화면:** Xcode 직접 빌드 시 `.env` 파일 없으면 Supabase 키 미포함 → 흰화면
+- **공유클립 초대링크:** `https://jnyoong.github.io/clipu/join?code=` 형식 사용
+- **ActionSheet + Share.share() 충돌:** onPress에 setTimeout 300ms 딜레이로 해결
