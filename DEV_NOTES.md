@@ -168,11 +168,36 @@ clipu/
 
 ---
 
+## v1.1.1 변경사항 (2026-05-15)
+
+### 신규 기능
+- **스와이프 삭제:** 링크카드 왼쪽 스와이프 → 삭제 확인 팝업 (개인/공유 모두)
+- **하트 반응:** 공유클립 링크카드 꾹 누르면 하트 토글 (약한 햅틱, 멤버 간 공유)
+  - Supabase `link_reactions` 테이블 추가 필요 (별도 SQL 실행)
+- **Pull-to-Refresh:** 리스트 아래로 당기면 새로고침
+- **로고 말풍선:** Clipu 로고 클릭 시 앱 내 커스텀 말풍선 (사용법 안내)
+- **iOS Share Extension 재활성화:** app.json plugins에 expo-share-intent 추가
+  - `androidIntentFilters: []` 로 Android는 로컬 AndroidManifest.xml 유지
+- **커스텀 ActionSheet:** Alert.alert 대신 커스텀 모달 (Android 취소 버튼 문제 해결)
+- **Android 링크카드 크기 조절:** Platform 조건부 스타일
+
+### 버그 수정
+- 공유클립 팝업 취소 버튼 Android에서 작동 안 하는 문제
+- 공유 멤버 0명 표시 버그 (RPC 대신 직접 쿼리로 대체)
+- 빈 링크 목록에서 Pull-to-Refresh 안 되는 문제
+
+### 추가된 패키지
+- `react-native-gesture-handler` (스와이프)
+- `expo-haptics` (햅틱 진동)
+
+---
+
 ## 알아두면 좋은 것들
 
 - **iOS 빌드 충돌:** EAS가 app.json을 자동 수정함. 빌드 전 `git stash && git pull` 필수.
-- **expo-share-intent 플러그인 제거:** iOS ShareExtension 충돌 문제로 plugins에서 제거. Android intent filter는 로컬 android/ 폴더에 유지.
+- **expo-share-intent 플러그인:** v1.1.1에서 재활성화. 이전 중복 충돌 원인은 extra.eas.build.experimental 중복 정의였음 (현재 제거됨).
 - **환경변수:** `.env`는 gitignore. EAS 환경변수는 `eas env:create`로 등록 (1회만).
 - **Android 빌드:** 로컬 Gradle로만 빌드. EAS Android 빌드는 키스토어 설정 필요.
 - **키스토어:** `android/app/clipu-release.keystore` + `_backup/` 폴더 백업 (절대 분실 금지).
 - **어드민 접근:** is_admin 메타데이터 없으면 로그인해도 접근 차단됨.
+- **link_reactions RLS:** 공유클립 멤버끼리 하트를 볼 수 있도록 SELECT 정책 설정 필요.
