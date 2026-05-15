@@ -459,16 +459,18 @@ export default function HomeScreen({ navigation }: Props) {
         }
         activeOpacity={0.7}
       >
-        {editMode && (
-          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-            {isSelected && <Text style={styles.checkboxTick}>✓</Text>}
-          </View>
-        )}
-        {item.image_url ? (
-          <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover" />
-        ) : (
-          <View style={[styles.cardImage, styles.cardImagePlaceholder]} />
-        )}
+        <View style={styles.cardImageWrapper}>
+          {item.image_url ? (
+            <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover" />
+          ) : (
+            <View style={[styles.cardImage, styles.cardImagePlaceholder]} />
+          )}
+          {editMode && (
+            <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+              {isSelected && <Text style={styles.checkboxTick}>✓</Text>}
+            </View>
+          )}
+        </View>
         <View style={styles.cardBody}>
           <Text style={styles.cardTitle} numberOfLines={2}>{item.title || item.url}</Text>
           <Text style={styles.cardDomain} numberOfLines={1}>{getDomain(item.url)}</Text>
@@ -813,12 +815,15 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
   cardSelected: { borderWidth: 2, borderColor: '#2563EB' },
+  cardImageWrapper: { position: 'relative', flexShrink: 0 },
   checkbox: {
-    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#D1D5DB',
-    marginLeft: 12, justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    position: 'absolute', top: 4, left: 4, zIndex: 10,
+    width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#fff',
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
   },
   checkboxSelected: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
-  checkboxTick: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
+  checkboxTick: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
   cardImage: { width: CARD_IMAGE_SIZE, height: CARD_IMAGE_SIZE, backgroundColor: '#F3F4F6', flexShrink: 0 },
   cardImagePlaceholder: { backgroundColor: '#E5E7EB' },
   cardBody: { flex: 1, paddingHorizontal: 12, paddingVertical: CARD_PADDING_V, gap: 3 },
