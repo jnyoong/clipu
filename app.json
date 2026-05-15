@@ -3,7 +3,19 @@
     "name": "clipu",
     "slug": "clipu",
     "scheme": "clipu",
-    "version": "1.1.0",
+    "version": "1.1.1",
+    "plugins": [
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1
+          },
+          "androidIntentFilters": []
+        }
+      ]
+    ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +28,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.clipu.app",
-      "buildNumber": "13",
+      "buildNumber": "14",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

@@ -15,7 +15,12 @@ import {
   Switch,
   Modal,
   TouchableWithoutFeedback,
+  RefreshControl,
+  Platform,
+  Animated,
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
@@ -27,7 +32,7 @@ import { AppStackParamList } from '../App';
 import { Collection } from './CollectionsScreen';
 import SettingsModal from './SettingsModal';
 
-type Member = { user_id: string; role: string; email: string };
+type Member = { user_id: string; role: string; email?: string };
 
 type Link = {
   id: string;
@@ -39,9 +44,71 @@ type Link = {
   created_at: string;
 };
 
+type ActionSheetOption = {
+  text: string;
+  style?: 'default' | 'destructive' | 'cancel';
+  onPress?: () => void;
+};
+
+type ActionSheetState = {
+  visible: boolean;
+  title?: string;
+  options: ActionSheetOption[];
+};
+
+// ReactionsMap: link_id → Set<user_id>
+type ReactionsMap = Record<string, Set<string>>;
+
 type Props = {
   navigation: NativeStackNavigationProp<AppStackParamList, 'Home'>;
 };
+
+function ActionSheet({ visible, title, options, onClose }: ActionSheetState & { onClose: () => void }) {
+  if (!visible) return null;
+  const normalOptions = options.filter(o => o.style !== 'cancel');
+  const cancelOption = options.find(o => o.style === 'cancel');
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={asStyles.overlay}>
+          <TouchableWithoutFeedback>
+            <View style={asStyles.container}>
+              {title && <Text style={asStyles.title}>{title}</Text>}
+              {normalOptions.map((opt, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[asStyles.option, i < normalOptions.length - 1 && asStyles.optionBorder]}
+                  onPress={() => { onClose(); opt.onPress?.(); }}
+                >
+                  <Text style={[asStyles.optionText, opt.style === 'destructive' && asStyles.destructiveText]}>
+                    {opt.text}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {cancelOption && (
+                <TouchableOpacity style={asStyles.cancelOption} onPress={() => { onClose(); cancelOption.onPress?.(); }}>
+                  <Text style={asStyles.cancelText}>{cancelOption.text}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+const asStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end', paddingBottom: 30 },
+  container: { backgroundColor: '#fff', borderRadius: 16, marginHorizontal: 16, overflow: 'hidden' },
+  title: { fontSize: 13, color: '#888', textAlign: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  option: { paddingVertical: 16, alignItems: 'center' },
+  optionBorder: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  optionText: { fontSize: 16, color: '#111' },
+  destructiveText: { color: '#EF4444' },
+  cancelOption: { backgroundColor: '#fff', paddingVertical: 16, alignItems: 'center', marginTop: 8, borderRadius: 16 },
+  cancelText: { fontSize: 16, fontWeight: '600', color: '#333' },
+});
 
 export default function HomeScreen({ navigation }: Props) {
   const { session, signOut } = useAuth();
@@ -50,6 +117,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null | 'all'>('all');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [addingCollection, setAddingCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [newCollectionIsShared, setNewCollectionIsShared] = useState(false);
@@ -58,10 +126,14 @@ export default function HomeScreen({ navigation }: Props) {
   const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set());
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [membersModal, setMembersModal] = useState<{ col: Collection; members: Member[]; loadingMembers: boolean } | null>(null);
+  const [reactions, setReactions] = useState<ReactionsMap>({});
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [actionSheet, setActionSheet] = useState<ActionSheetState>({ visible: false, options: [] });
   const inputRef = useRef<TextInput>(null);
+  const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map());
 
   const fetchAll = async () => {
-    const [linksRes, colsRes] = await Promise.all([
+    const [linksRes, colsRes, reactionsRes] = await Promise.all([
       supabase
         .from('links')
         .select('id, url, title, description, image_url, collection_id, created_at')
@@ -69,7 +141,9 @@ export default function HomeScreen({ navigation }: Props) {
       supabase
         .from('collection_members')
         .select('role, collections(id, name, user_id, is_shared, invite_code, created_at)'),
+      supabase.from('link_reactions').select('link_id, user_id'),
     ]);
+
     if (!linksRes.error && linksRes.data) setLinks(linksRes.data);
     if (!colsRes.error && colsRes.data) {
       const cols: Collection[] = (colsRes.data as any[])
@@ -80,8 +154,22 @@ export default function HomeScreen({ navigation }: Props) {
         .map((m) => ({ ...m.collections, role: m.role as 'owner' | 'member' }));
       setCollections(cols);
     }
+    if (!reactionsRes.error && reactionsRes.data) {
+      const map: ReactionsMap = {};
+      (reactionsRes.data as { link_id: string; user_id: string }[]).forEach(r => {
+        if (!map[r.link_id]) map[r.link_id] = new Set();
+        map[r.link_id].add(r.user_id);
+      });
+      setReactions(map);
+    }
     setLoading(false);
   };
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchAll();
+    setRefreshing(false);
+  }, []);
 
   useFocusEffect(useCallback(() => { fetchAll(); }, []));
   useEffect(() => { if (route.params?.joinedAt) fetchAll(); }, [route.params?.joinedAt]);
@@ -91,24 +179,24 @@ export default function HomeScreen({ navigation }: Props) {
     setSelectedLinks(new Set());
   };
 
+  const openActionSheet = (title: string | undefined, options: ActionSheetOption[]) => {
+    setActionSheet({ visible: true, title, options });
+  };
+
+  const closeActionSheet = () => setActionSheet(prev => ({ ...prev, visible: false }));
+
   const handleSettingsPress = () => {
-    Alert.alert('메뉴', undefined, [
+    openActionSheet('메뉴', [
+      { text: '편집', onPress: () => setEditMode(true) },
+      { text: '설정', onPress: () => setSettingsVisible(true) },
       {
-        text: '편집',
-        onPress: () => setEditMode(true),
-      },
-      {
-        text: '설정',
-        onPress: () => setSettingsVisible(true),
-      },
-      {
-        text: '로그아웃',
-        style: 'destructive',
-        onPress: () => {
-          Alert.alert('로그아웃', '로그아웃 하시겠어요?', [
-            { text: '취소', style: 'cancel' },
-            { text: '로그아웃', style: 'destructive', onPress: signOut },
-          ]);
+        text: '로그아웃', style: 'destructive', onPress: () => {
+          setTimeout(() => {
+            Alert.alert('로그아웃', '로그아웃 하시겠어요?', [
+              { text: '취소', style: 'cancel' },
+              { text: '로그아웃', style: 'destructive', onPress: signOut },
+            ]);
+          }, 300);
         },
       },
       { text: '취소', style: 'cancel' },
@@ -233,29 +321,32 @@ export default function HomeScreen({ navigation }: Props) {
 
   const handleViewMembers = async (col: Collection) => {
     setMembersModal({ col, members: [], loadingMembers: true });
-    const { data, error } = await supabase.rpc('get_collection_members', { coll_id: col.id });
+    const { data, error } = await supabase
+      .from('collection_members')
+      .select('user_id, role')
+      .eq('collection_id', col.id);
     if (!error && data) {
       setMembersModal({ col, members: data as Member[], loadingMembers: false });
     } else {
-      setMembersModal((prev) => prev ? { ...prev, loadingMembers: false } : null);
+      setMembersModal(prev => prev ? { ...prev, loadingMembers: false } : null);
     }
   };
 
   const handleCollectionTabLongPress = (col: Collection) => {
-    const buttons: any[] = [];
+    const options: ActionSheetOption[] = [];
     if (col.is_shared) {
-      buttons.push({ text: '초대 링크 공유', onPress: () => shareInviteLink(col) });
-      buttons.push({ text: '공유 멤버 보기', onPress: () => handleViewMembers(col) });
+      options.push({ text: '초대 링크 공유', onPress: () => shareInviteLink(col) });
+      options.push({ text: '공유 멤버 보기', onPress: () => handleViewMembers(col) });
     } else if (col.role === 'owner') {
-      buttons.push({ text: '공유 클립으로 전환', onPress: () => handleConvertToShared(col) });
+      options.push({ text: '공유 클립으로 전환', onPress: () => handleConvertToShared(col) });
     }
     if (col.role === 'owner') {
-      buttons.push({ text: '클립 삭제', style: 'destructive', onPress: () => handleDeleteCollection(col) });
+      options.push({ text: '클립 삭제', style: 'destructive', onPress: () => handleDeleteCollection(col) });
     } else {
-      buttons.push({ text: '클립 나가기', style: 'destructive', onPress: () => handleLeaveCollection(col) });
+      options.push({ text: '클립 나가기', style: 'destructive', onPress: () => handleLeaveCollection(col) });
     }
-    buttons.push({ text: '취소', style: 'cancel' });
-    Alert.alert(col.name, undefined, buttons);
+    options.push({ text: '취소', style: 'cancel' });
+    openActionSheet(col.name, options);
   };
 
   const handleCreateCollection = async () => {
@@ -288,6 +379,37 @@ export default function HomeScreen({ navigation }: Props) {
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
+  const handleToggleLike = async (linkId: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const myId = session!.user.id;
+    const isLiked = reactions[linkId]?.has(myId) ?? false;
+    setReactions(prev => {
+      const next = { ...prev };
+      const current = next[linkId] ? new Set(next[linkId]) : new Set<string>();
+      isLiked ? current.delete(myId) : current.add(myId);
+      next[linkId] = current;
+      return next;
+    });
+    if (isLiked) {
+      await supabase.from('link_reactions').delete().eq('link_id', linkId).eq('user_id', myId);
+    } else {
+      await supabase.from('link_reactions').insert({ link_id: linkId, user_id: myId });
+    }
+  };
+
+  const handleSwipeDelete = (linkId: string) => {
+    swipeableRefs.current.get(linkId)?.close();
+    Alert.alert('링크 삭제', '이 링크를 삭제할까요?', [
+      { text: '취소', style: 'cancel', onPress: () => swipeableRefs.current.get(linkId)?.close() },
+      {
+        text: '삭제', style: 'destructive', onPress: async () => {
+          await supabase.from('links').delete().eq('id', linkId);
+          setLinks(prev => prev.filter(l => l.id !== linkId));
+        },
+      },
+    ]);
+  };
+
   const filteredLinks =
     selectedCollectionId === 'all'
       ? links
@@ -295,21 +417,46 @@ export default function HomeScreen({ navigation }: Props) {
       ? links.filter((l) => l.collection_id === null)
       : links.filter((l) => l.collection_id === selectedCollectionId);
 
+  const selectedCollection = collections.find(c => c.id === selectedCollectionId);
+  const isInSharedCollection = selectedCollection?.is_shared ?? false;
+
+  const renderRightActions = (linkId: string, dragX: Animated.AnimatedInterpolation<number>) => {
+    const opacity = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0], extrapolate: 'clamp' });
+    return (
+      <TouchableOpacity style={styles.swipeDeleteBtn} onPress={() => handleSwipeDelete(linkId)} activeOpacity={0.85}>
+        <Animated.View style={{ opacity, alignItems: 'center' }}>
+          <Ionicons name="trash-outline" size={22} color="#fff" />
+          <Text style={styles.swipeDeleteText}>삭제</Text>
+        </Animated.View>
+      </TouchableOpacity>
+    );
+  };
+
   const renderCard = ({ item }: { item: Link }) => {
     const isSelected = selectedLinks.has(item.id);
-    return (
+    const isLikedByMe = reactions[item.id]?.has(session!.user.id) ?? false;
+    const likeCount = reactions[item.id]?.size ?? 0;
+
+    const cardContent = (
       <TouchableOpacity
         style={[styles.card, editMode && isSelected && styles.cardSelected]}
         onPress={editMode ? () => toggleLinkSelection(item.id) : () => Linking.openURL(item.url)}
-        onLongPress={editMode ? undefined : () => {
-          Alert.alert('삭제', '이 링크를 삭제할까요?', [
-            { text: '취소', style: 'cancel' },
-            { text: '삭제', style: 'destructive', onPress: async () => {
-              await supabase.from('links').delete().eq('id', item.id);
-              setLinks((prev) => prev.filter((l) => l.id !== item.id));
-            }},
-          ]);
-        }}
+        onLongPress={
+          editMode ? undefined :
+          isInSharedCollection
+            ? () => handleToggleLike(item.id)
+            : () => {
+                Alert.alert('삭제', '이 링크를 삭제할까요?', [
+                  { text: '취소', style: 'cancel' },
+                  {
+                    text: '삭제', style: 'destructive', onPress: async () => {
+                      await supabase.from('links').delete().eq('id', item.id);
+                      setLinks(prev => prev.filter(l => l.id !== item.id));
+                    },
+                  },
+                ]);
+              }
+        }
         activeOpacity={0.7}
       >
         {editMode && (
@@ -329,7 +476,26 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
           ) : null}
         </View>
+        {isInSharedCollection && !editMode && (
+          <View style={styles.heartBadge}>
+            {likeCount > 0 && <Text style={styles.heartCount}>{likeCount}</Text>}
+            <Text style={[styles.heartIcon, isLikedByMe && styles.heartIconActive]}>♥</Text>
+          </View>
+        )}
       </TouchableOpacity>
+    );
+
+    if (editMode) return cardContent;
+
+    return (
+      <Swipeable
+        ref={ref => swipeableRefs.current.set(item.id, ref)}
+        renderRightActions={(_, dragX) => renderRightActions(item.id, dragX)}
+        overshootRight={false}
+        rightThreshold={40}
+      >
+        {cardContent}
+      </Swipeable>
     );
   };
 
@@ -342,7 +508,21 @@ export default function HomeScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.logo}>Clipu</Text>
+        <View>
+          <TouchableOpacity onPress={() => setTooltipVisible(v => !v)}>
+            <Text style={styles.logo}>Clipu</Text>
+          </TouchableOpacity>
+          {tooltipVisible && (
+            <View style={styles.tooltip}>
+              <View style={styles.tooltipArrow} />
+              <Text style={styles.tooltipText}>
+                인스타·유튜브·인터넷 글에서{'\n'}
+                <Text style={styles.tooltipBold}>공유 버튼 → Clipu 선택</Text>하면{'\n'}
+                링크가 자동 저장돼요!
+              </Text>
+            </View>
+          )}
+        </View>
         {editMode ? (
           <TouchableOpacity onPress={exitEditMode}>
             <Text style={styles.editDone}>완료</Text>
@@ -353,6 +533,12 @@ export default function HomeScreen({ navigation }: Props) {
           </TouchableOpacity>
         )}
       </View>
+
+      {tooltipVisible && (
+        <TouchableWithoutFeedback onPress={() => setTooltipVisible(false)}>
+          <View style={styles.tooltipOverlay} />
+        </TouchableWithoutFeedback>
+      )}
 
       <View style={styles.tabsWrapper}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
@@ -431,17 +617,26 @@ export default function HomeScreen({ navigation }: Props) {
 
       {loading ? (
         <ActivityIndicator style={styles.loader} color="#2563EB" size="large" />
-      ) : filteredLinks.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>저장된 링크가 없어요</Text>
-          {!editMode && <Text style={styles.emptyHint}>아래 + 버튼으로 첫 링크를 저장해보세요</Text>}
-        </View>
       ) : (
         <FlatList
           data={filteredLinks}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={filteredLinks.length === 0 ? styles.emptyContainer : styles.list}
           renderItem={renderCard}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#2563EB"
+              colors={['#2563EB']}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>저장된 링크가 없어요</Text>
+              {!editMode && <Text style={styles.emptyHint}>아래 + 버튼으로 첫 링크를 저장해보세요</Text>}
+            </View>
+          }
         />
       )}
 
@@ -517,9 +712,20 @@ export default function HomeScreen({ navigation }: Props) {
           </TouchableWithoutFeedback>
         </Modal>
       )}
+
+      <ActionSheet
+        visible={actionSheet.visible}
+        title={actionSheet.title}
+        options={actionSheet.options}
+        onClose={closeActionSheet}
+      />
     </SafeAreaView>
   );
 }
+
+const CARD_IMAGE_SIZE = Platform.OS === 'android' ? 64 : 72;
+const CARD_TITLE_SIZE = Platform.OS === 'android' ? 13 : 14;
+const CARD_PADDING_V = Platform.OS === 'android' ? 8 : 10;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
@@ -527,10 +733,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+    zIndex: 100,
   },
   logo: { fontSize: 24, fontWeight: '700', color: '#2563EB' },
   settingsBtnWrap: { padding: 2 },
   editDone: { fontSize: 15, color: '#2563EB', fontWeight: '600' },
+
+  tooltipOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 },
+  tooltip: {
+    position: 'absolute', top: 36, left: 0, zIndex: 200,
+    backgroundColor: '#1E293B', borderRadius: 12, padding: 14,
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
+    elevation: 8, minWidth: 220,
+  },
+  tooltipArrow: {
+    position: 'absolute', top: -7, left: 16,
+    width: 0, height: 0,
+    borderLeftWidth: 7, borderLeftColor: 'transparent',
+    borderRightWidth: 7, borderRightColor: 'transparent',
+    borderBottomWidth: 7, borderBottomColor: '#1E293B',
+  },
+  tooltipText: { fontSize: 13, color: '#F1F5F9', lineHeight: 20 },
+  tooltipBold: { fontWeight: '700', color: '#93C5FD' },
+
   tabsWrapper: {
     height: 52, backgroundColor: '#fff',
     borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
@@ -574,10 +799,12 @@ const styles = StyleSheet.create({
   addCollectionCancel: { paddingHorizontal: 8, paddingVertical: 8 },
   addCollectionCancelText: { color: '#888', fontSize: 14 },
   loader: { flex: 1 },
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyContainer: { flex: 1 },
+  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 100 },
   emptyText: { fontSize: 16, color: '#555', marginBottom: 8 },
   emptyHint: { fontSize: 13, color: '#999' },
   list: { padding: 16, gap: 12 },
+
   card: {
     backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden',
     flexDirection: 'row', alignItems: 'center',
@@ -590,12 +817,27 @@ const styles = StyleSheet.create({
   },
   checkboxSelected: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
   checkboxTick: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
-  cardImage: { width: 72, height: 72, backgroundColor: '#F3F4F6', flexShrink: 0 },
+  cardImage: { width: CARD_IMAGE_SIZE, height: CARD_IMAGE_SIZE, backgroundColor: '#F3F4F6', flexShrink: 0 },
   cardImagePlaceholder: { backgroundColor: '#E5E7EB' },
-  cardBody: { flex: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 3 },
-  cardTitle: { fontSize: 14, fontWeight: '600', color: '#111', lineHeight: 20 },
+  cardBody: { flex: 1, paddingHorizontal: 12, paddingVertical: CARD_PADDING_V, gap: 3 },
+  cardTitle: { fontSize: CARD_TITLE_SIZE, fontWeight: '600', color: '#111', lineHeight: 20 },
   cardDomain: { fontSize: 11, color: '#2563EB' },
   cardDesc: { fontSize: 12, color: '#777', lineHeight: 17, marginTop: 1 },
+
+  heartBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 2,
+    position: 'absolute', bottom: 6, right: 8,
+  },
+  heartCount: { fontSize: 10, color: '#9CA3AF' },
+  heartIcon: { fontSize: 13, color: '#D1D5DB' },
+  heartIconActive: { color: '#F43F5E' },
+
+  swipeDeleteBtn: {
+    backgroundColor: '#EF4444', width: 72, justifyContent: 'center', alignItems: 'center',
+    borderTopRightRadius: 14, borderBottomRightRadius: 14,
+  },
+  swipeDeleteText: { color: '#fff', fontSize: 11, marginTop: 3 },
+
   deleteBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: '#EF4444', paddingVertical: 18, alignItems: 'center',
