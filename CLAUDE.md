@@ -34,14 +34,20 @@ cd android && ./gradlew bundleRelease -x lint
 ### 2. iOS 빌드 (맥북에서 — Xcode 직접 빌드 방식)
 EAS 클라우드 빌드 한도 소진으로 로컬 Xcode 빌드 방식 사용 중.
 
+**상황별 필요 명령어 (코드 수정 내용에 따라 다름):**
+
+| 상황 | 맥북 터미널 명령 |
+|---|---|
+| tsx 코드만 수정 | `git pull` 후 바로 Xcode Archive |
+| npm 패키지 추가됨 | `git pull` → `cd ios && pod install && cd ..` → Xcode Archive |
+| app.json 플러그인 변경 | `git pull` → `npx expo prebuild --platform ios --clean` → `cd ios && pod install && cd ..` → Xcode Archive |
+| 맥북 첫 빌드 / 흰화면 발생 | 아래 전체 명령 실행 |
+
+**맥북 첫 빌드 또는 흰화면 시 전체 명령:**
 ```bash
-# 맥북 터미널에서 순서대로 실행
 cd ~/clipu && git pull
-# app.json buildNumber 1 증가 (예: "15" → "16")
-sed -i '' 's/"buildNumber": "현재번호"/"buildNumber": "새번호"/' app.json
-# .env 파일 생성 (없으면 흰화면 발생)
+# .env 파일 생성 (맥북에 이미 있으면 생략)
 printf 'EXPO_PUBLIC_SUPABASE_URL=https://qzgohbxvpxtsquaygsmh.supabase.co\nEXPO_PUBLIC_SUPABASE_KEY=sb_publishable_YNvSkk_TQj9bPE4oqoaD3A_8Bx_5K0c\n' > .env
-# ios 폴더 재생성
 npx expo prebuild --platform ios --clean
 cd ios && pod install && cd ..
 ```
@@ -52,12 +58,10 @@ cd ios && pod install && cd ..
 3. Team: `junhyeong park (Y9Q88U5QG3)` 선택
 4. **`Product` → `Archive`**
 5. Organizer → `Distribute App` → `App Store Connect` → `Upload`
-6. TestFlight에서 확인 후 Transporter 불필요 (Xcode에서 직접 업로드)
 
 **주의사항:**
-- `.env` 파일 없으면 흰화면 발생 (Supabase 키 미포함)
-- `buildNumber` 반드시 증가 (같은 번호 재업로드 불가)
-- EAS 클라우드 빌드 월 한도 초과 시 이 방식 사용
+- `.env` 파일 없으면 흰화면 발생 — 맥북에 한 번만 만들면 이후 유지됨
+- `buildNumber` 반드시 증가 (같은 번호 재업로드 불가) — Windows에서 app.json 수정 후 commit
 
 ### 3. 버전 업 시 체크리스트
 - [ ] `app.json` ios.buildNumber 증가
