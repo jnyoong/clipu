@@ -3,6 +3,7 @@
 ## 기본 규칙
 - **항상 한국어**로만 응답
 - 코드 수정 완료 시 **Android AAB 빌드까지 자동 실행** 후 완료 안내
+- **배포 시마다 iOS buildNumber, Android versionCode 반드시 1씩 증가** (빠뜨리면 스토어 업로드 불가)
 - iOS 배포 안내는 맥북 직접 빌드 방식으로 안내
 - 중요한 결정은 사용자 확인 후 진행
 
@@ -13,7 +14,7 @@
 - **GitHub:** https://github.com/jnyoong/clipu
 - **Supabase:** https://qzgohbxvpxtsquaygsmh.supabase.co
 - **어드민:** https://jnyoong.github.io/clipu/admin.html
-- **현재 버전:** 1.1.1 (iOS 빌드 15 / Android versionCode 9)
+- **현재 버전:** 1.1.1 (iOS 빌드 16 / Android versionCode 9)
 
 ---
 
