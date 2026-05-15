@@ -321,6 +321,13 @@ export default function HomeScreen({ navigation }: Props) {
 
   const handleViewMembers = async (col: Collection) => {
     setMembersModal({ col, members: [], loadingMembers: true });
+    // RPC 우선 시도 (이메일 포함)
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_collection_members', { coll_id: col.id });
+    if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+      setMembersModal({ col, members: rpcData as Member[], loadingMembers: false });
+      return;
+    }
+    // RPC 실패 또는 빈 결과 → 직접 쿼리 fallback
     const { data, error } = await supabase
       .from('collection_members')
       .select('user_id, role')
@@ -417,8 +424,10 @@ export default function HomeScreen({ navigation }: Props) {
       ? links.filter((l) => l.collection_id === null)
       : links.filter((l) => l.collection_id === selectedCollectionId);
 
-  const selectedCollection = collections.find(c => c.id === selectedCollectionId);
-  const isInSharedCollection = selectedCollection?.is_shared ?? false;
+  const isLinkInSharedCollection = (link: Link): boolean => {
+    if (!link.collection_id) return false;
+    return collections.find(c => c.id === link.collection_id)?.is_shared ?? false;
+  };
 
   const renderRightActions = (linkId: string, dragX: Animated.AnimatedInterpolation<number>) => {
     const opacity = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0], extrapolate: 'clamp' });
@@ -436,6 +445,7 @@ export default function HomeScreen({ navigation }: Props) {
     const isSelected = selectedLinks.has(item.id);
     const isLikedByMe = reactions[item.id]?.has(session!.user.id) ?? false;
     const likeCount = reactions[item.id]?.size ?? 0;
+    const linkIsShared = isLinkInSharedCollection(item);
 
     const cardContent = (
       <TouchableOpacity
@@ -443,7 +453,7 @@ export default function HomeScreen({ navigation }: Props) {
         onPress={editMode ? () => toggleLinkSelection(item.id) : () => Linking.openURL(item.url)}
         onLongPress={
           editMode ? undefined :
-          isInSharedCollection
+          linkIsShared
             ? () => handleToggleLike(item.id)
             : () => {
                 Alert.alert('삭제', '이 링크를 삭제할까요?', [
@@ -476,7 +486,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
           ) : null}
         </View>
-        {isInSharedCollection && !editMode && (
+        {linkIsShared && !editMode && (
           <View style={styles.heartBadge}>
             {likeCount > 0 && <Text style={styles.heartCount}>{likeCount}</Text>}
             <Text style={[styles.heartIcon, isLikedByMe && styles.heartIconActive]}>♥</Text>
