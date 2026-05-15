@@ -32,7 +32,7 @@ import { AppStackParamList } from '../App';
 import { Collection } from './CollectionsScreen';
 import SettingsModal from './SettingsModal';
 
-type Member = { user_id: string; role: string; email?: string };
+type Member = { user_id: string; role: string; nickname?: string };
 
 type Link = {
   id: string;
@@ -78,7 +78,7 @@ function ActionSheet({ visible, title, options, onClose }: ActionSheetState & { 
                 <TouchableOpacity
                   key={i}
                   style={[asStyles.option, i < normalOptions.length - 1 && asStyles.optionBorder]}
-                  onPress={() => { onClose(); opt.onPress?.(); }}
+                  onPress={() => { onClose(); setTimeout(() => opt.onPress?.(), 300); }}
                 >
                   <Text style={[asStyles.optionText, opt.style === 'destructive' && asStyles.destructiveText]}>
                     {opt.text}
@@ -86,7 +86,7 @@ function ActionSheet({ visible, title, options, onClose }: ActionSheetState & { 
                 </TouchableOpacity>
               ))}
               {cancelOption && (
-                <TouchableOpacity style={asStyles.cancelOption} onPress={() => { onClose(); cancelOption.onPress?.(); }}>
+                <TouchableOpacity style={asStyles.cancelOption} onPress={() => { onClose(); setTimeout(() => cancelOption.onPress?.(), 300); }}>
                   <Text style={asStyles.cancelText}>{cancelOption.text}</Text>
                 </TouchableOpacity>
               )}
@@ -321,17 +321,7 @@ export default function HomeScreen({ navigation }: Props) {
 
   const handleViewMembers = async (col: Collection) => {
     setMembersModal({ col, members: [], loadingMembers: true });
-    // RPC 우선 시도 (이메일 포함)
-    const { data: rpcData, error: rpcError } = await supabase.rpc('get_collection_members', { coll_id: col.id });
-    if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
-      setMembersModal({ col, members: rpcData as Member[], loadingMembers: false });
-      return;
-    }
-    // RPC 실패 또는 빈 결과 → 직접 쿼리 fallback
-    const { data, error } = await supabase
-      .from('collection_members')
-      .select('user_id, role')
-      .eq('collection_id', col.id);
+    const { data, error } = await supabase.rpc('get_collection_members', { coll_id: col.id });
     if (!error && data) {
       setMembersModal({ col, members: data as Member[], loadingMembers: false });
     } else {
@@ -703,14 +693,16 @@ export default function HomeScreen({ navigation }: Props) {
                         renderItem={({ item }) => (
                           <View style={styles.memberRow}>
                             <View style={styles.memberInfo}>
-                              <Text style={styles.memberEmail} numberOfLines={1}>
-                                {item.email || item.user_id.slice(0, 8) + '...'}
+                              <Text style={styles.memberName} numberOfLines={1}>
+                                {item.nickname || item.user_id.slice(0, 8) + '...'}
                               </Text>
                               {item.user_id === session?.user.id && (
                                 <Text style={styles.memberMe}>나</Text>
                               )}
+                              {item.role === 'owner' && (
+                                <Text style={styles.memberOwner}>방장</Text>
+                              )}
                             </View>
-                            {item.role === 'owner' && <Text style={styles.memberOwner}>방장</Text>}
                           </View>
                         )}
                       />
@@ -874,8 +866,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', width: '100%',
   },
-  memberInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8 },
-  memberEmail: { fontSize: 14, color: '#333', flex: 1 },
+  memberInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 6 },
+  memberName: { fontSize: 14, color: '#333', flex: 1 },
   memberMe: {
     fontSize: 11, color: '#2563EB', backgroundColor: '#EFF6FF',
     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, overflow: 'hidden',

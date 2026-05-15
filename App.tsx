@@ -31,7 +31,7 @@ export type AppStackParamList = {
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
-function AndroidShareHandler({ onShare }: { onShare: (url: string) => void }) {
+function ShareHandler({ onShare }: { onShare: (url: string) => void }) {
   const { shareIntent, resetShareIntent } = useShareIntent();
   useEffect(() => {
     if (!shareIntent?.webUrl) return;
@@ -115,7 +115,7 @@ function AppContent() {
   if (!session) {
     return (
       <>
-        {Platform.OS === 'android' && <AndroidShareHandler onShare={setSharedUrl} />}
+        <ShareHandler onShare={setSharedUrl} />
         <NavigationContainer>
           <StatusBar style="auto" />
           <AuthStack.Navigator screenOptions={{ headerShown: false }}>
@@ -131,7 +131,7 @@ function AppContent() {
   if (sharedUrl) {
     return (
       <>
-        {Platform.OS === 'android' && <AndroidShareHandler onShare={setSharedUrl} />}
+        <ShareHandler onShare={setSharedUrl} />
         <StatusBar style="light" />
         <SharePickerScreen
           sharedUrl={sharedUrl}
@@ -145,7 +145,7 @@ function AppContent() {
 
   return (
     <>
-      {Platform.OS === 'android' && <AndroidShareHandler onShare={setSharedUrl} />}
+      <ShareHandler onShare={setSharedUrl} />
       <NavigationContainer ref={navRef}>
         <StatusBar style="auto" />
         <AppStack.Navigator screenOptions={{ headerShown: false }}>
