@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -131,6 +131,15 @@ export default function HomeScreen({ navigation }: Props) {
   const [actionSheet, setActionSheet] = useState<ActionSheetState>({ visible: false, options: [] });
   const inputRef = useRef<TextInput>(null);
   const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map());
+
+  // 클립별 링크 갯수 (10개 이상일 때 탭에 표시)
+  const linkCountByCollection = useMemo(() => {
+    const map: Record<string, number> = {};
+    links.forEach(l => {
+      if (l.collection_id) map[l.collection_id] = (map[l.collection_id] || 0) + 1;
+    });
+    return map;
+  }, [links]);
 
   const fetchAll = async () => {
     const [linksRes, colsRes, reactionsRes] = await Promise.all([
@@ -319,6 +328,33 @@ export default function HomeScreen({ navigation }: Props) {
     );
   };
 
+  const handleConvertToPersonal = (col: Collection) => {
+    Alert.alert(
+      '개인 클립으로 전환',
+      `"${col.name}"을 개인 클립으로 전환할까요?`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '전환',
+          onPress: async () => {
+            const { data: members } = await supabase
+              .from('collection_members')
+              .select('user_id')
+              .eq('collection_id', col.id);
+            const others = (members ?? []).filter(m => m.user_id !== session?.user.id);
+            if (others.length > 0) {
+              Alert.alert('전환 불가', '공유 멤버가 있을 때는 개인 클립으로 전환할 수 없어요.\n먼저 멤버들이 나간 후 전환해주세요.');
+              return;
+            }
+            await supabase.from('collections').update({ is_shared: false, invite_code: null }).eq('id', col.id);
+            setCollections(prev => prev.map(c => c.id === col.id ? { ...c, is_shared: false, invite_code: undefined } : c));
+            Alert.alert('전환 완료', `"${col.name}"이 개인 클립으로 전환됐어요.`);
+          },
+        },
+      ]
+    );
+  };
+
   const handleViewMembers = async (col: Collection) => {
     setMembersModal({ col, members: [], loadingMembers: true });
 
@@ -357,6 +393,9 @@ export default function HomeScreen({ navigation }: Props) {
     if (col.is_shared) {
       options.push({ text: '초대 링크 공유', onPress: () => shareInviteLink(col) });
       options.push({ text: '공유 멤버 보기', onPress: () => handleViewMembers(col) });
+      if (col.role === 'owner') {
+        options.push({ text: '개인 클립으로 전환', onPress: () => handleConvertToPersonal(col) });
+      }
     } else if (col.role === 'owner') {
       options.push({ text: '공유 클립으로 전환', onPress: () => handleConvertToShared(col) });
     }
@@ -463,7 +502,10 @@ export default function HomeScreen({ navigation }: Props) {
     const cardContent = (
       <TouchableOpacity
         style={[styles.card, editMode && isSelected && styles.cardSelected]}
-        onPress={editMode ? () => toggleLinkSelection(item.id) : () => Linking.openURL(item.url)}
+        onPress={editMode ? () => toggleLinkSelection(item.id) : () => {
+          Linking.openURL(item.url);
+          supabase.from('link_views').insert({ link_id: item.id, user_id: session!.user.id }).then(() => {});
+        }}
         onLongPress={
           editMode ? undefined :
           linkIsShared
@@ -576,6 +618,8 @@ export default function HomeScreen({ navigation }: Props) {
               >
                 <Text style={[styles.tabText, selectedCollectionId === tab.id && styles.tabTextActive]}>
                   {tab.col?.is_shared ? '🔗 ' : ''}{tab.label}
+                  {tab.col && (linkCountByCollection[tab.col.id] ?? 0) >= 10
+                    ? ` ${linkCountByCollection[tab.col.id]}` : ''}
                 </Text>
               </TouchableOpacity>
               {editMode && tab.col && (

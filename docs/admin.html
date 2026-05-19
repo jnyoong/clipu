@@ -43,6 +43,19 @@
 
     .loading { text-align: center; padding: 40px; color: #888; }
     .tag-admin { background: #2563EB; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 6px; margin-left: 6px; }
+
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 32px; }
+    .metric-card { background: #fff; border-radius: 14px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .metric-card .value { font-size: 28px; font-weight: 700; color: #059669; }
+    .metric-card .label { font-size: 12px; color: #888; margin-top: 4px; }
+    .metric-card .sub { font-size: 11px; color: #aaa; margin-top: 2px; }
+    .trend-table { background: #fff; border-radius: 14px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 32px; }
+    .trend-table .trend-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; color: #333; }
+    .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .bar-label { font-size: 12px; color: #888; width: 40px; }
+    .bar-bg { flex: 1; background: #F3F4F6; border-radius: 4px; height: 20px; overflow: hidden; }
+    .bar-fill { background: #2563EB; height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .bar-count { font-size: 12px; color: #555; width: 30px; text-align: right; }
   </style>
 </head>
 <body>
@@ -67,6 +80,7 @@
         <button class="btn-logout" onclick="handleLogout()">로그아웃</button>
       </header>
 
+      <!-- 기본 통계 -->
       <div class="stats">
         <div class="stat-card">
           <div class="value" id="statUsers">-</div>
@@ -80,6 +94,42 @@
           <div class="value" id="statCollections">-</div>
           <div class="label">총 클립</div>
         </div>
+      </div>
+
+      <!-- 행동 지표 -->
+      <div class="section-title" style="margin-bottom:12px">📊 행동 지표</div>
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="value" id="metricTodayLinks">-</div>
+          <div class="label">오늘 저장 링크</div>
+          <div class="sub">지난 24시간</div>
+        </div>
+        <div class="metric-card">
+          <div class="value" id="metricTodayCols">-</div>
+          <div class="label">오늘 클립 생성</div>
+          <div class="sub">지난 24시간</div>
+        </div>
+        <div class="metric-card">
+          <div class="value" id="metricSharedPct">-</div>
+          <div class="label">공유클립 링크 비율</div>
+          <div class="sub">전체 링크 중</div>
+        </div>
+        <div class="metric-card">
+          <div class="value" id="metricRetention">-</div>
+          <div class="label">D7 리텐션</div>
+          <div class="sub">7일 전 가입 → 7일 내 저장</div>
+        </div>
+        <div class="metric-card">
+          <div class="value" id="metricViewPct">-</div>
+          <div class="label">재열람률</div>
+          <div class="sub">저장 후 1회 이상 열람</div>
+        </div>
+      </div>
+
+      <!-- 7일 저장 트렌드 -->
+      <div class="trend-table">
+        <div class="trend-title">📈 최근 7일 링크 저장 추이</div>
+        <div id="trendChart"><span style="color:#aaa;font-size:13px">불러오는 중...</span></div>
       </div>
 
       <div class="section-title">사용자 관리</div>
@@ -123,13 +173,40 @@
     }
 
     async function loadStats() {
-      const { data: users } = await sb.rpc('admin_list_users');
-      const { count: linkCount } = await sb.from('links').select('*', { count: 'exact', head: true });
-      const { count: colCount } = await sb.from('collections').select('*', { count: 'exact', head: true });
+      const [usersRes, linkRes, colRes] = await Promise.all([
+        sb.rpc('admin_list_users'),
+        sb.from('links').select('*', { count: 'exact', head: true }),
+        sb.from('collections').select('*', { count: 'exact', head: true }),
+      ]);
+      document.getElementById('statUsers').textContent = usersRes.data?.length ?? '-';
+      document.getElementById('statLinks').textContent = linkRes.count ?? '-';
+      document.getElementById('statCollections').textContent = colRes.count ?? '-';
+      await loadMetrics();
+    }
 
-      document.getElementById('statUsers').textContent = users?.length ?? '-';
-      document.getElementById('statLinks').textContent = linkCount ?? '-';
-      document.getElementById('statCollections').textContent = colCount ?? '-';
+    async function loadMetrics() {
+      const { data, error } = await sb.rpc('admin_get_metrics');
+      if (error || !data) return;
+
+      document.getElementById('metricTodayLinks').textContent = data.today_links ?? '-';
+      document.getElementById('metricTodayCols').textContent = data.today_collections ?? '-';
+      document.getElementById('metricSharedPct').textContent =
+        data.shared_links_pct != null ? data.shared_links_pct + '%' : '-';
+      document.getElementById('metricRetention').textContent =
+        data.d7_retention != null ? data.d7_retention + '%' : '-';
+      document.getElementById('metricViewPct').textContent =
+        data.view_pct != null ? data.view_pct + '%' : '-';
+
+      // 7일 트렌드 바 차트
+      const weekly = data.weekly_links ?? [];
+      const max = Math.max(...weekly.map(d => d.count), 1);
+      const bars = weekly.map(d => `
+        <div class="bar-row">
+          <span class="bar-label">${d.day}</span>
+          <div class="bar-bg"><div class="bar-fill" style="width:${Math.round(d.count/max*100)}%"></div></div>
+          <span class="bar-count">${d.count}</span>
+        </div>`).join('');
+      document.getElementById('trendChart').innerHTML = bars || '<span style="color:#aaa;font-size:13px">데이터 없음</span>';
     }
 
     async function loadUsers() {

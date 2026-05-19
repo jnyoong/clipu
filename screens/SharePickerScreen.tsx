@@ -11,6 +11,7 @@ import {
   Platform,
   ToastAndroid,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { supabase } from '../lib/supabase';
 import { saveLink } from '../lib/saveLink';
 import { sendSharedCollectionNotification } from '../lib/pushNotifications';
@@ -65,6 +66,7 @@ export default function SharePickerScreen({ sharedUrl, userId, userNickname, onD
     }
 
     // 공유클립이면 다른 멤버에게 알림 발송 (push_tokens 테이블 설정 후 실제 발송됨)
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (item.is_shared) {
       sendSharedCollectionNotification(item.id, item.name, userNickname ?? '누군가');
     }

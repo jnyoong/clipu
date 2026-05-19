@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
+import * as Haptics from 'expo-haptics';
 import { supabase } from '../lib/supabase';
 import { saveLink } from '../lib/saveLink';
 import { sendSharedCollectionNotification } from '../lib/pushNotifications';
@@ -73,7 +74,7 @@ export default function AddLinkScreen({ navigation, route }: Props) {
     if (error) {
       Alert.alert('저장 실패', error);
     } else {
-      // 공유클립이면 다른 멤버에게 알림 발송
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const col = collections.find(c => c.id === selectedCollection.id);
       if (col?.is_shared) {
         const nickname = session?.user.user_metadata?.nickname || session?.user.email?.split('@')[0] || '누군가';
