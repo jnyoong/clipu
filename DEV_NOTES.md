@@ -10,8 +10,8 @@
 | 항목 | 값 |
 |---|---|
 | 앱 버전 | **1.1.1** |
-| iOS 빌드 번호 | 14 |
-| Android versionCode | 8 |
+| iOS 빌드 번호 | 17 |
+| Android versionCode | 10 |
 
 ---
 
@@ -99,10 +99,68 @@ collection_members: id, collection_id, user_id, role('owner'|'member'), created_
 |---|---|
 | `get_collection_by_invite(code)` | 초대 코드로 클립 정보 조회 |
 | `join_collection(code)` | 초대 코드로 클립 참여 (최대 30명) |
-| `get_collection_members(coll_id)` | 클립 멤버 목록 조회 (이메일 포함) |
+| `get_collection_members(coll_id)` | 클립 멤버 목록 조회 (닉네임 포함, SECURITY DEFINER) |
+| `get_collection_push_tokens(coll_id)` | 공유클립 멤버 푸시 토큰 조회 — **미등록, 아래 SQL 실행 필요** |
 | `delete_my_account()` | 본인 계정 + 데이터 완전 삭제 |
 | `admin_list_users()` | 전체 유저 목록 (어드민 전용) |
 | `admin_delete_user(target_user_id)` | 유저 삭제 (어드민 전용) |
+
+---
+
+## 푸시 알림 설정 (다음 세션 — Firebase 준비 완료 후)
+
+### 1단계: Supabase SQL 실행 (지금 바로 가능)
+Supabase → SQL Editor 에서 아래 실행:
+
+```sql
+-- 푸시 토큰 저장 테이블
+CREATE TABLE IF NOT EXISTS push_tokens (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  token text NOT NULL,
+  updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE push_tokens ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "own token" ON push_tokens FOR ALL USING (auth.uid() = user_id);
+
+-- 공유클립 멤버 토큰 조회 (내 토큰 제외, SECURITY DEFINER)
+CREATE OR REPLACE FUNCTION get_collection_push_tokens(coll_id uuid)
+RETURNS TABLE(token text)
+LANGUAGE sql SECURITY DEFINER AS $$
+  SELECT pt.token
+  FROM collection_members cm
+  JOIN push_tokens pt ON pt.user_id = cm.user_id
+  WHERE cm.collection_id = coll_id AND cm.user_id != auth.uid();
+$$;
+
+-- get_collection_members 0명 버그 해결용 (기존 함수 재생성)
+CREATE OR REPLACE FUNCTION get_collection_members(coll_id uuid)
+RETURNS TABLE(user_id uuid, role text, nickname text)
+LANGUAGE sql SECURITY DEFINER AS $$
+  SELECT cm.user_id, cm.role,
+         (auth.users.raw_user_meta_data->>'nickname') AS nickname
+  FROM collection_members cm
+  JOIN auth.users ON auth.users.id = cm.user_id
+  WHERE cm.collection_id = coll_id;
+$$;
+```
+
+### 2단계: Firebase 프로젝트 생성
+1. https://console.firebase.google.com → 새 프로젝트 (clipu)
+2. Android 앱 추가 → 패키지명: `com.clipu.app`
+3. `google-services.json` 다운로드 → `android/app/` 폴더에 복사
+
+### 3단계: expo-notifications 설치 + 빌드
+```bash
+npm install expo-notifications
+# app.json plugins 배열에 "expo-notifications" 추가
+npx expo prebuild --platform android  # android/ 재생성
+# 그 후 versionCode 증가하고 AAB 빌드
+```
+
+### 4단계: 토큰 등록 코드 활성화
+`lib/pushNotifications.ts` → `registerForPushNotifications` 함수 주석 해제
+
+이후 앱 실행 시 자동으로 토큰이 등록되고, 공유클립에 링크 저장 시 다른 멤버에게 알림이 발송됩니다.
 
 ---
 

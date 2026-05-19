@@ -16,11 +16,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { saveLink } from '../lib/saveLink';
+import { sendSharedCollectionNotification } from '../lib/pushNotifications';
 import { useAuth } from '../contexts/AuthContext';
 import { AppStackParamList } from '../App';
 import { Collection } from './CollectionsScreen';
 
-type PickerItem = { id: string | null; name: string };
+type PickerItem = { id: string; name: string };
 
 type Props = {
   navigation: NativeStackNavigationProp<AppStackParamList, 'AddLink'>;
@@ -60,14 +61,24 @@ export default function AddLinkScreen({ navigation, route }: Props) {
       Alert.alert('오류', 'URL을 입력해주세요.');
       return;
     }
+    if (!selectedCollection) {
+      Alert.alert('클립 선택 필요', '저장할 클립을 선택해주세요.');
+      return;
+    }
 
     setLoading(true);
-    const { error } = await saveLink(trimmed, session!.user.id, selectedCollection?.id ?? null);
+    const { error } = await saveLink(trimmed, session!.user.id, selectedCollection.id);
     setLoading(false);
 
     if (error) {
       Alert.alert('저장 실패', error);
     } else {
+      // 공유클립이면 다른 멤버에게 알림 발송
+      const col = collections.find(c => c.id === selectedCollection.id);
+      if (col?.is_shared) {
+        const nickname = session?.user.user_metadata?.nickname || session?.user.email?.split('@')[0] || '누군가';
+        sendSharedCollectionNotification(col.id, col.name, nickname);
+      }
       navigation.goBack();
     }
   };
@@ -94,13 +105,13 @@ export default function AddLinkScreen({ navigation, route }: Props) {
         />
 
         <TouchableOpacity
-          style={styles.collectionPicker}
+          style={[styles.collectionPicker, !selectedCollection && styles.collectionPickerRequired]}
           onPress={() => setPickerVisible(true)}
           disabled={loading}
         >
-          <Text style={styles.collectionPickerLabel}>클립</Text>
+          <Text style={styles.collectionPickerLabel}>클립 *</Text>
           <Text style={[styles.collectionPickerValue, !selectedCollection && styles.collectionPickerPlaceholder]}>
-            {selectedCollection ? selectedCollection.name : '선택 안 함'}
+            {selectedCollection ? selectedCollection.name : '클립을 선택하세요'}
           </Text>
           <Text style={styles.collectionPickerArrow}>›</Text>
         </TouchableOpacity>
@@ -133,30 +144,36 @@ export default function AddLinkScreen({ navigation, route }: Props) {
         <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>클립 선택</Text>
-          <FlatList
-            data={[{ id: null, name: '선택 안 함' }, ...collections] as PickerItem[]}
-            keyExtractor={(item) => item.id ?? '__none__'}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.modalItem}
-                onPress={() => {
-                  setSelectedCollection(item.id ? item : null);
-                  setPickerVisible(false);
-                }}
-              >
-                <Text style={[
-                  styles.modalItemText,
-                  !item.id && styles.modalItemTextMuted,
-                  selectedCollection?.id === item.id && styles.modalItemTextSelected,
-                ]}>
-                  {item.name}
-                </Text>
-                {selectedCollection?.id === item.id && (
-                  <Text style={styles.modalItemCheck}>✓</Text>
-                )}
-              </TouchableOpacity>
-            )}
-          />
+          {collections.length === 0 ? (
+            <View style={styles.modalEmpty}>
+              <Text style={styles.modalEmptyText}>클립이 없어요</Text>
+              <Text style={styles.modalEmptyHint}>홈 화면에서 클립을 먼저 만들어주세요</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={collections as PickerItem[]}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.modalItem}
+                  onPress={() => {
+                    setSelectedCollection(item);
+                    setPickerVisible(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.modalItemText,
+                    selectedCollection?.id === item.id && styles.modalItemTextSelected,
+                  ]}>
+                    {item.name}
+                  </Text>
+                  {selectedCollection?.id === item.id && (
+                    <Text style={styles.modalItemCheck}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            />
+          )}
         </View>
       </Modal>
     </KeyboardAvoidingView>
@@ -218,6 +235,9 @@ const styles = StyleSheet.create({
   collectionPickerPlaceholder: {
     color: '#bbb',
     fontWeight: '400',
+  },
+  collectionPickerRequired: {
+    borderColor: '#FCA5A5',
   },
   collectionPickerArrow: {
     fontSize: 18,
@@ -301,5 +321,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#2563EB',
     fontWeight: '700',
+  },
+  modalEmpty: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 8,
+  },
+  modalEmptyText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#555',
+  },
+  modalEmptyHint: {
+    fontSize: 13,
+    color: '#999',
   },
 });

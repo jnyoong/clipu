@@ -103,6 +103,14 @@ export default function SettingsModal({ visible, onClose, session, onSignOut }: 
             )}
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={onClose}
+            disabled={saving}
+          >
+            <Text style={styles.cancelBtnText}>취소</Text>
+          </TouchableOpacity>
+
           <View style={styles.divider} />
 
           <TouchableOpacity
@@ -187,6 +195,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  cancelBtn: {
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  cancelBtnText: {
+    color: '#888',
+    fontSize: 15,
   },
   divider: {
     width: '100%',

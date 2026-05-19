@@ -136,6 +136,7 @@ function AppContent() {
         <SharePickerScreen
           sharedUrl={sharedUrl}
           userId={session.user.id}
+          userNickname={session.user.user_metadata?.nickname || session.user.email?.split('@')[0] || ''}
           onDone={() => setSharedUrl(null)}
         />
         {inviteModal}

@@ -233,7 +233,7 @@ export default function HomeScreen({ navigation }: Props) {
     if (hasLinks) {
       Alert.alert(
         '클립 삭제',
-        `"${col.name}"에 링크가 있어요.\n삭제하면 링크가 미분류로 이동돼요. 계속할까요?`,
+        `"${col.name}"에 링크가 있어요.\n삭제하면 링크는 전체 탭에서만 보이게 돼요. 계속할까요?`,
         [
           { text: '취소', style: 'cancel' },
           {
@@ -256,7 +256,7 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   const handleDeleteCollection = (col: Collection) => {
-    Alert.alert('클립 삭제', `"${col.name}"을 삭제할까요?\n안에 있는 링크는 미분류로 이동돼요.`, [
+    Alert.alert('클립 삭제', `"${col.name}"을 삭제할까요?\n안에 있는 링크는 전체 탭에서만 보이게 돼요.`, [
       { text: '취소', style: 'cancel' },
       {
         text: '삭제',
@@ -321,9 +321,32 @@ export default function HomeScreen({ navigation }: Props) {
 
   const handleViewMembers = async (col: Collection) => {
     setMembersModal({ col, members: [], loadingMembers: true });
-    const { data, error } = await supabase.rpc('get_collection_members', { coll_id: col.id });
-    if (!error && data) {
-      setMembersModal({ col, members: data as Member[], loadingMembers: false });
+
+    // 1차: RPC 시도
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_collection_members', { coll_id: col.id });
+    console.warn('[members RPC]', { collId: col.id, error: rpcError?.message, count: Array.isArray(rpcData) ? rpcData.length : 'null' });
+
+    if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+      setMembersModal({ col, members: rpcData as Member[], loadingMembers: false });
+      return;
+    }
+
+    // 2차 폴백: collection_members 직접 조회 (RLS 정책에 따라 결과 다를 수 있음)
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('collection_members')
+      .select('user_id, role')
+      .eq('collection_id', col.id);
+    console.warn('[members fallback]', { error: fallbackError?.message, count: fallbackData?.length });
+
+    if (fallbackData && fallbackData.length > 0) {
+      const members: Member[] = (fallbackData as { user_id: string; role: string }[]).map(m => ({
+        user_id: m.user_id,
+        role: m.role,
+        nickname: m.user_id === session?.user.id
+          ? (session!.user.user_metadata?.nickname || session!.user.email?.split('@')[0])
+          : undefined,
+      }));
+      setMembersModal({ col, members, loadingMembers: false });
     } else {
       setMembersModal(prev => prev ? { ...prev, loadingMembers: false } : null);
     }
@@ -501,10 +524,9 @@ export default function HomeScreen({ navigation }: Props) {
     );
   };
 
-  const tabs: Array<{ id: string | null | 'all'; label: string; col?: Collection }> = [
+  const tabs: Array<{ id: string | 'all'; label: string; col?: Collection }> = [
     { id: 'all', label: '전체' },
     ...collections.map((c) => ({ id: c.id, label: c.name, col: c })),
-    { id: null, label: '미분류' },
   ];
 
   return (
