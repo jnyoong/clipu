@@ -66,6 +66,289 @@
 
 ---
 
+## iOS Share Extension — 공유창 내 클립 선택 구현 (맥북에서 진행)
+
+> 외부앱 공유 → Clipu 앱이 열리지 않고 공유 시트 안에서 바로 클립 선택 → 저장 → 원래 앱 유지
+
+### 전제 조건
+- `expo-secure-store` 설치 완료 ✓ (세션 토큰 Keychain에 자동 저장 중)
+- 맥북에서 아래 순서 진행
+
+### Step 1: 최신 코드로 prebuild
+
+```bash
+cd ~/clipu && git pull
+npx expo prebuild --platform ios --clean
+cd ios && pod install && cd ..
+```
+
+### Step 2: Xcode에서 App Group + Keychain 공유 설정
+
+`open ios/clipu.xcworkspace` 후:
+
+1. **clipu 타겟** → Signing & Capabilities → + 버튼
+   - **App Groups** 추가 → `group.com.clipu.app`
+   - **Keychain Sharing** 추가 → `com.clipu.app`
+
+2. **ShareExtension 타겟** → 동일하게 적용
+   - App Groups: `group.com.clipu.app`
+   - Keychain Sharing: `com.clipu.app`
+
+### Step 3: 새 Share Extension 타겟 생성 (기존 ShareExtension 교체)
+
+> File → New → Target → Share Extension → 이름: `ClipuShare`
+
+Package: `com.clipu.app.ClipuShare`
+
+### Step 4: ClipuShareViewController.swift 교체
+
+`ios/ClipuShare/ShareViewController.swift` 내용을 아래로 교체:
+
+```swift
+import UIKit
+import Social
+
+class ShareViewController: UIViewController {
+
+  private let supabaseUrl = "https://qzgohbxvpxtsquaygsmh.supabase.co"
+  private let anonKey = "sb_publishable_YNvSkk_TQj9bPE4oqoaD3A_8Bx_5K0c"
+
+  private var sharedUrl: String = ""
+  private var collections: [[String: String]] = []
+  private var accessToken: String = ""
+  private var userId: String = ""
+
+  private let tableView = UITableView()
+  private let titleLabel = UILabel()
+  private let urlLabel = UILabel()
+  private let indicator = UIActivityIndicatorView(style: .medium)
+
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    setupUI()
+    loadCredentials()
+  }
+
+  private func loadCredentials() {
+    // Keychain에서 토큰 읽기
+    accessToken = readFromKeychain(key: "clipu_access_token") ?? ""
+    userId = readFromKeychain(key: "clipu_user_id") ?? ""
+
+    guard !accessToken.isEmpty else {
+      showError("Clipu 앱에 먼저 로그인해주세요")
+      return
+    }
+
+    // 공유 URL 추출
+    extractSharedUrl { [weak self] url in
+      guard let self = self, let url = url else { return }
+      self.sharedUrl = url
+      DispatchQueue.main.async {
+        self.urlLabel.text = url
+        self.indicator.startAnimating()
+      }
+      self.fetchCollections()
+    }
+  }
+
+  private func fetchCollections() {
+    guard let url = URL(string: "\(supabaseUrl)/rest/v1/rpc/get_user_collections") else { return }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue(anonKey, forHTTPHeaderField: "apikey")
+    request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+    request.httpBody = "{}".data(using: .utf8)
+
+    // 직접 collection_members 조회로 대체
+    let cmUrl = URL(string: "\(supabaseUrl)/rest/v1/collection_members?select=role,collections(id,name,is_shared)&order=collections(created_at)")!
+    var cmReq = URLRequest(url: cmUrl)
+    cmReq.setValue(anonKey, forHTTPHeaderField: "apikey")
+    cmReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+    URLSession.shared.dataTask(with: cmReq) { [weak self] data, _, _ in
+      guard let self = self, let data = data,
+            let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+        DispatchQueue.main.async { self?.showError("클립 목록을 불러오지 못했어요") }
+        return
+      }
+      self.collections = arr.compactMap { item -> [String: String]? in
+        guard let col = item["collections"] as? [String: Any],
+              let id = col["id"] as? String,
+              let name = col["name"] as? String else { return nil }
+        let isShared = col["is_shared"] as? Bool ?? false
+        return ["id": id, "name": (isShared ? "🔗 " : "") + name]
+      }
+      DispatchQueue.main.async {
+        self.indicator.stopAnimating()
+        self.tableView.reloadData()
+      }
+    }.resume()
+  }
+
+  private func saveLink(collectionId: String) {
+    indicator.startAnimating()
+    let endpoint = URL(string: "\(supabaseUrl)/rest/v1/links")!
+    var req = URLRequest(url: endpoint)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.setValue(anonKey, forHTTPHeaderField: "apikey")
+    req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+    req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+
+    let body: [String: Any] = [
+      "user_id": userId,
+      "url": sharedUrl,
+      "collection_id": collectionId
+    ]
+    req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+    URLSession.shared.dataTask(with: req) { [weak self] _, resp, _ in
+      let ok = (resp as? HTTPURLResponse)?.statusCode == 201
+      DispatchQueue.main.async {
+        self?.indicator.stopAnimating()
+        if ok {
+          self?.extensionContext?.completeRequest(returningItems: nil)
+        } else {
+          self?.showError("저장 실패. 다시 시도해주세요.")
+        }
+      }
+    }.resume()
+  }
+
+  private func extractSharedUrl(completion: @escaping (String?) -> Void) {
+    guard let item = extensionContext?.inputItems.first as? NSExtensionItem,
+          let provider = item.attachments?.first else {
+      completion(nil); return
+    }
+    if provider.hasItemConformingToTypeIdentifier("public.url") {
+      provider.loadItem(forTypeIdentifier: "public.url") { data, _ in
+        completion((data as? URL)?.absoluteString ?? data as? String)
+      }
+    } else if provider.hasItemConformingToTypeIdentifier("public.plain-text") {
+      provider.loadItem(forTypeIdentifier: "public.plain-text") { data, _ in
+        completion(data as? String)
+      }
+    } else {
+      completion(nil)
+    }
+  }
+
+  private func readFromKeychain(key: String) -> String? {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "expo-secure-store",
+      kSecAttrAccount as String: key,
+      kSecAttrAccessGroup as String: "com.clipu.app",
+      kSecReturnData as String: true,
+      kSecMatchLimit as String: kSecMatchLimitOne
+    ]
+    var result: AnyObject?
+    SecItemCopyMatching(query as CFDictionary, &result)
+    guard let data = result as? Data else { return nil }
+    return String(data: data, encoding: .utf8)
+  }
+
+  private func setupUI() {
+    view.backgroundColor = .systemBackground
+
+    titleLabel.text = "어디에 저장할까요?"
+    titleLabel.font = .boldSystemFont(ofSize: 17)
+    titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+    urlLabel.font = .systemFont(ofSize: 12)
+    urlLabel.textColor = .secondaryLabel
+    urlLabel.numberOfLines = 1
+    urlLabel.translatesAutoresizingMaskIntoConstraints = false
+
+    indicator.translatesAutoresizingMaskIntoConstraints = false
+
+    tableView.dataSource = self
+    tableView.delegate = self
+    tableView.translatesAutoresizingMaskIntoConstraints = false
+    tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
+
+    let cancelBtn = UIButton(type: .system)
+    cancelBtn.setTitle("취소", for: .normal)
+    cancelBtn.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+    cancelBtn.translatesAutoresizingMaskIntoConstraints = false
+
+    view.addSubview(titleLabel)
+    view.addSubview(urlLabel)
+    view.addSubview(indicator)
+    view.addSubview(tableView)
+    view.addSubview(cancelBtn)
+
+    NSLayoutConstraint.activate([
+      titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+      titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      urlLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6),
+      urlLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      urlLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+      indicator.topAnchor.constraint(equalTo: urlLabel.bottomAnchor, constant: 12),
+      indicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      tableView.topAnchor.constraint(equalTo: urlLabel.bottomAnchor, constant: 8),
+      tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      tableView.bottomAnchor.constraint(equalTo: cancelBtn.topAnchor, constant: -8),
+      cancelBtn.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+      cancelBtn.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+    ])
+  }
+
+  private func showError(_ msg: String) {
+    let alert = UIAlertController(title: "오류", message: msg, preferredStyle: .alert)
+    alert.addAction(UIAlertAction(title: "확인", style: .default) { [weak self] _ in
+      self?.extensionContext?.cancelRequest(withError: NSError(domain: "ClipuShare", code: 0))
+    })
+    present(alert, animated: true)
+  }
+
+  @objc private func cancelTapped() {
+    extensionContext?.cancelRequest(withError: NSError(domain: "ClipuShare", code: 1))
+  }
+}
+
+extension ShareViewController: UITableViewDataSource, UITableViewDelegate {
+  func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+    collections.count
+  }
+  func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
+    cell.textLabel?.text = collections[indexPath.row]["name"]
+    return cell
+  }
+  func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+    guard let id = collections[indexPath.row]["id"] else { return }
+    saveLink(collectionId: id)
+  }
+}
+```
+
+### Step 5: ClipuShare/Info.plist 설정
+
+Info.plist에 아래 항목 추가 (NSExtension 딕셔너리 내):
+```xml
+<key>NSExtensionActivationRule</key>
+<dict>
+  <key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+  <integer>1</integer>
+  <key>NSExtensionActivationSupportsWebPageWithMaxCount</key>
+  <integer>1</integer>
+</dict>
+```
+
+### Step 6: 기존 expo-share-intent ShareExtension 비활성화 (선택)
+
+Xcode → Schemes → clipu → Build → ShareExtension 체크 해제하거나,
+Info.plist에서 `NSExtensionActivationRule`을 빈 딕셔너리로 변경해 공유 대상에서 제외.
+
+### Step 7: 빌드 & 테스트
+
+buildNumber 증가 → Product → Archive → Upload
+
+---
+
 ## 어드민 페이지
 **URL:** https://jnyoong.github.io/clipu/admin.html
 

@@ -9,6 +9,7 @@ import { useShareIntent } from 'expo-share-intent';
 import * as ExpoLinking from 'expo-linking';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { registerForPushNotifications } from './lib/pushNotifications';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -68,6 +69,13 @@ function AppContent() {
   const [sharedUrl, setSharedUrl] = useState<string | null>(null);
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
   const navRef = useRef<NavigationContainerRef<AppStackParamList>>(null);
+
+  // 로그인 시 푸시 토큰 등록 (iOS: Xcode Push Notifications 설정 후 동작, Android: Firebase 설정 후 동작)
+  useEffect(() => {
+    if (session?.user.id) {
+      registerForPushNotifications(session.user.id);
+    }
+  }, [session?.user.id]);
 
   useEffect(() => {
     const handleUrl = (url: string) => {

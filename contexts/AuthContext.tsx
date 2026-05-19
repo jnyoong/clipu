@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
+import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../lib/supabase';
 
 type AuthContextType = {
@@ -26,6 +27,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      // iOS Share Extension이 Keychain에서 읽어갈 수 있도록 저장
+      if (session?.access_token) {
+        SecureStore.setItemAsync('clipu_access_token', session.access_token).catch(() => {});
+        SecureStore.setItemAsync('clipu_user_id', session.user.id).catch(() => {});
+      } else {
+        SecureStore.deleteItemAsync('clipu_access_token').catch(() => {});
+        SecureStore.deleteItemAsync('clipu_user_id').catch(() => {});
+      }
     });
 
     return () => subscription.unsubscribe();
