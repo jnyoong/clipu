@@ -213,18 +213,22 @@ export default function MyScreen() {
           style: 'destructive',
           onPress: async () => {
             setUnsubscribingId(collectionId);
-            await supabase
+            const { error } = await supabase
               .from('collection_subscriptions')
               .delete()
               .eq('collection_id', collectionId)
               .eq('user_id', session!.user.id);
+            setUnsubscribingId(null);
+            if (error) {
+              Alert.alert('오류', '구독 취소에 실패했어요. 다시 시도해주세요.');
+              return;
+            }
             setSubscribedCurators(prev =>
               prev.map(curator => ({
                 ...curator,
                 collections: curator.collections.filter(c => c.id !== collectionId),
               })).filter(curator => curator.collections.length > 0)
             );
-            setUnsubscribingId(null);
           },
         },
       ]

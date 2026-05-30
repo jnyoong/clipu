@@ -120,7 +120,11 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
       setLikeCount(colRes.like_count);
       setSubCount(colRes.sub_count);
     }
-    if (!linksRes.error && linksRes.data) setLinks(linksRes.data);
+    if (!linksRes.error && linksRes.data) {
+      setLinks(linksRes.data);
+    } else if (linksRes.error) {
+      setLinks([]);
+    }
     setLiked(!!likeRes.data);
     setSubscribed(!!subRes.data);
     setLoading(false);
@@ -299,7 +303,8 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
             const showAll = subscribed || isOwner;
             const PREVIEW_COUNT = 3;
             const visibleLinks = showAll ? links : links.slice(0, PREVIEW_COUNT);
-            const hiddenCount = showAll ? 0 : Math.max(0, links.length - PREVIEW_COUNT);
+            // links.length는 최대 20개 limit이므로 실제 전체 수(collection.link_count) 기준으로 계산
+            const hiddenCount = showAll ? 0 : Math.max(0, collection.link_count - PREVIEW_COUNT);
 
             return (
               <>

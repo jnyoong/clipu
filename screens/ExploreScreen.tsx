@@ -111,6 +111,9 @@ export default function ExploreScreen({ navigation }: Props) {
           <View style={styles.cardStats}>
             <Text style={styles.statText}>🔗 {item.link_count}</Text>
             <Text style={styles.statText}>♡ {item.like_count}</Text>
+            {item.sub_count > 0 && (
+              <Text style={styles.statText}>● {item.sub_count}</Text>
+            )}
           </View>
         </View>
       </TouchableOpacity>

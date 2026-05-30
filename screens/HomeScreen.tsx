@@ -555,10 +555,12 @@ export default function HomeScreen({ navigation }: Props) {
     const { error } = await supabase
       .from('links').update({ note: trimmed }).eq('id', noteModal.linkId);
     setSavingNote(false);
-    if (!error) {
-      setLinks(prev => prev.map(l => l.id === noteModal.linkId ? { ...l, note: trimmed } : l));
-      setNoteModal(null);
+    if (error) {
+      Alert.alert('오류', '코멘트 저장에 실패했어요. 다시 시도해주세요.');
+      return;
     }
+    setLinks(prev => prev.map(l => l.id === noteModal.linkId ? { ...l, note: trimmed } : l));
+    setNoteModal(null);
   };
 
   const isSubTab = typeof selectedCollectionId === 'string' && subColIds.includes(selectedCollectionId);
