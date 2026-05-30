@@ -28,9 +28,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { getDomain } from '../lib/og';
-import { AppStackParamList } from '../App';
+import { HomeStackParamList } from '../App';
 import { Collection } from './CollectionsScreen';
 import SettingsModal from './SettingsModal';
+import PublicConvertModal from './PublicConvertModal';
 
 type Member = { user_id: string; role: string; nickname?: string };
 
@@ -60,7 +61,7 @@ type ActionSheetState = {
 type ReactionsMap = Record<string, Set<string>>;
 
 type Props = {
-  navigation: NativeStackNavigationProp<AppStackParamList, 'Home'>;
+  navigation: NativeStackNavigationProp<HomeStackParamList, 'Home'>;
 };
 
 function ActionSheet({ visible, title, options, onClose }: ActionSheetState & { onClose: () => void }) {
@@ -112,7 +113,7 @@ const asStyles = StyleSheet.create({
 
 export default function HomeScreen({ navigation }: Props) {
   const { session, signOut } = useAuth();
-  const route = useRoute<RouteProp<AppStackParamList, 'Home'>>();
+  const route = useRoute<RouteProp<HomeStackParamList, 'Home'>>();
   const [links, setLinks] = useState<Link[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null | 'all'>('all');
@@ -129,6 +130,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [reactions, setReactions] = useState<ReactionsMap>({});
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState>({ visible: false, options: [] });
+  const [publicConvertModal, setPublicConvertModal] = useState<{ col: Collection } | null>(null);
   const inputRef = useRef<TextInput>(null);
   const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map());
 
@@ -149,7 +151,7 @@ export default function HomeScreen({ navigation }: Props) {
         .order('created_at', { ascending: false }),
       supabase
         .from('collection_members')
-        .select('role, collections(id, name, user_id, is_shared, invite_code, created_at)'),
+        .select('role, collections(id, name, user_id, is_shared, invite_code, is_public, description, category, cover_url, created_at)'),
       supabase.from('link_reactions').select('link_id, user_id'),
     ]);
 
@@ -347,7 +349,7 @@ export default function HomeScreen({ navigation }: Props) {
               return;
             }
             await supabase.from('collections').update({ is_shared: false, invite_code: null }).eq('id', col.id);
-            setCollections(prev => prev.map(c => c.id === col.id ? { ...c, is_shared: false, invite_code: undefined } : c));
+            setCollections(prev => prev.map(c => c.id === col.id ? { ...c, is_shared: false, invite_code: null } : c));
             Alert.alert('전환 완료', `"${col.name}"이 개인 클립으로 전환됐어요.`);
           },
         },
@@ -400,6 +402,11 @@ export default function HomeScreen({ navigation }: Props) {
       options.push({ text: '공유 클립으로 전환', onPress: () => handleConvertToShared(col) });
     }
     if (col.role === 'owner') {
+      if (col.is_public) {
+        options.push({ text: '🌐 전체공개 관리', onPress: () => setPublicConvertModal({ col }) });
+      } else {
+        options.push({ text: '🌐 전체공개로 전환', onPress: () => setPublicConvertModal({ col }) });
+      }
       options.push({ text: '클립 삭제', style: 'destructive', onPress: () => handleDeleteCollection(col) });
     } else {
       options.push({ text: '클립 나가기', style: 'destructive', onPress: () => handleLeaveCollection(col) });
@@ -617,7 +624,7 @@ export default function HomeScreen({ navigation }: Props) {
                 activeOpacity={0.7}
               >
                 <Text style={[styles.tabText, selectedCollectionId === tab.id && styles.tabTextActive]}>
-                  {tab.col?.is_shared ? '🔗 ' : ''}{tab.label}
+                  {tab.col?.is_public ? '🌐 ' : tab.col?.is_shared ? '🔗 ' : ''}{tab.label}
                   {tab.col && (linkCountByCollection[tab.col.id] ?? 0) >= 10
                     ? ` ${linkCountByCollection[tab.col.id]}` : ''}
                 </Text>
@@ -789,6 +796,19 @@ export default function HomeScreen({ navigation }: Props) {
         options={actionSheet.options}
         onClose={closeActionSheet}
       />
+
+      {publicConvertModal && (
+        <PublicConvertModal
+          visible={true}
+          collection={publicConvertModal.col}
+          linkCount={linkCountByCollection[publicConvertModal.col.id] ?? 0}
+          onClose={() => setPublicConvertModal(null)}
+          onConverted={(updated) => {
+            setCollections(prev => prev.map(c => c.id === updated.id ? updated : c));
+            setPublicConvertModal(null);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }

@@ -4,9 +4,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { useShareIntent } from 'expo-share-intent';
 import * as ExpoLinking from 'expo-linking';
+import { Ionicons } from '@expo/vector-icons';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { registerForPushNotifications } from './lib/pushNotifications';
@@ -17,20 +19,86 @@ import AddLinkScreen from './screens/AddLinkScreen';
 import CollectionsScreen from './screens/CollectionsScreen';
 import SharePickerScreen from './screens/SharePickerScreen';
 import JoinCollectionScreen from './screens/JoinCollectionScreen';
+import ExploreScreen from './screens/ExploreScreen';
+import CollectionDetailScreen from './screens/CollectionDetailScreen';
 
 export type AuthStackParamList = {
   Login: undefined;
   Signup: undefined;
 };
 
-export type AppStackParamList = {
+export type HomeStackParamList = {
   Home: { joinedAt?: number } | undefined;
   AddLink: { collectionId?: string | null };
   Collections: undefined;
 };
 
+export type ExploreStackParamList = {
+  Explore: undefined;
+  CollectionDetail: { collectionId: string };
+};
+
+export type MainTabParamList = {
+  홈: undefined;
+  탐색: undefined;
+};
+
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
-const AppStack = createNativeStackNavigator<AppStackParamList>();
+const HomeStack = createNativeStackNavigator<HomeStackParamList>();
+const ExploreStack = createNativeStackNavigator<ExploreStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
+
+function HomeStackScreen() {
+  return (
+    <HomeStack.Navigator screenOptions={{ headerShown: false }}>
+      <HomeStack.Screen name="Home" component={HomeScreen} />
+      <HomeStack.Screen name="AddLink" component={AddLinkScreen} />
+      <HomeStack.Screen name="Collections" component={CollectionsScreen} />
+    </HomeStack.Navigator>
+  );
+}
+
+function ExploreStackScreen() {
+  return (
+    <ExploreStack.Navigator screenOptions={{ headerShown: false }}>
+      <ExploreStack.Screen name="Explore" component={ExploreScreen} />
+      <ExploreStack.Screen name="CollectionDetail" component={CollectionDetailScreen} />
+    </ExploreStack.Navigator>
+  );
+}
+
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarActiveTintColor: '#2563EB',
+        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarStyle: {
+          backgroundColor: '#fff',
+          borderTopColor: '#F3F4F6',
+          borderTopWidth: 1,
+          height: Platform.OS === 'ios' ? 84 : 60,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 8,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName: React.ComponentProps<typeof Ionicons>['name'];
+          if (route.name === '홈') {
+            iconName = focused ? 'bookmark' : 'bookmark-outline';
+          } else {
+            iconName = focused ? 'compass' : 'compass-outline';
+          }
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+      })}
+    >
+      <Tab.Screen name="홈" component={HomeStackScreen} />
+      <Tab.Screen name="탐색" component={ExploreStackScreen} />
+    </Tab.Navigator>
+  );
+}
 
 function ShareHandler({ onShare }: { onShare: (url: string) => void }) {
   const { shareIntent, resetShareIntent } = useShareIntent();
@@ -68,9 +136,8 @@ function AppContent() {
   const { session, loading } = useAuth();
   const [sharedUrl, setSharedUrl] = useState<string | null>(null);
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
-  const navRef = useRef<NavigationContainerRef<AppStackParamList>>(null);
+  const navRef = useRef<NavigationContainerRef<MainTabParamList>>(null);
 
-  // 로그인 시 푸시 토큰 등록 (iOS: Xcode Push Notifications 설정 후 동작, Android: Firebase 설정 후 동작)
   useEffect(() => {
     if (session?.user.id) {
       registerForPushNotifications(session.user.id);
@@ -81,8 +148,6 @@ function AppContent() {
     const handleUrl = (url: string) => {
       const parsed = ExpoLinking.parse(url);
       if (parsed.scheme === 'clipu') {
-        // clipu://join/CODE → hostname='join', path='CODE'
-        // 또는 clipu://join/CODE → path='join/CODE' 두 경우 모두 처리
         const code =
           parsed.hostname === 'join' && parsed.path
             ? parsed.path
@@ -113,7 +178,6 @@ function AppContent() {
         inviteCode={pendingInviteCode}
         onJoined={() => {
           setPendingInviteCode(null);
-          navRef.current?.navigate('Home', { joinedAt: Date.now() });
         }}
         onCancel={() => setPendingInviteCode(null)}
       />
@@ -157,11 +221,7 @@ function AppContent() {
       <ShareHandler onShare={setSharedUrl} />
       <NavigationContainer ref={navRef}>
         <StatusBar style="auto" />
-        <AppStack.Navigator screenOptions={{ headerShown: false }}>
-          <AppStack.Screen name="Home" component={HomeScreen} />
-          <AppStack.Screen name="AddLink" component={AddLinkScreen} />
-          <AppStack.Screen name="Collections" component={CollectionsScreen} />
-        </AppStack.Navigator>
+        <MainTabs />
       </NavigationContainer>
       {inviteModal}
     </>

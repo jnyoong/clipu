@@ -16,7 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { AppStackParamList } from '../App';
+import { HomeStackParamList } from '../App';
 
 export type Collection = {
   id: string;
@@ -25,10 +25,14 @@ export type Collection = {
   is_shared: boolean;
   invite_code: string | null;
   role: 'owner' | 'member';
+  is_public?: boolean;
+  description?: string | null;
+  category?: string | null;
+  cover_url?: string | null;
 };
 
 type Props = {
-  navigation: NativeStackNavigationProp<AppStackParamList, 'Collections'>;
+  navigation: NativeStackNavigationProp<HomeStackParamList, 'Collections'>;
 };
 
 export default function CollectionsScreen({ navigation }: Props) {
