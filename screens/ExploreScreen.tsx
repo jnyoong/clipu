@@ -89,6 +89,9 @@ export default function ExploreScreen({ navigation }: Props) {
             </Text>
             {item.blue_check && <Text style={styles.blueCheck}>✓</Text>}
           </View>
+          {item.description ? (
+            <Text style={styles.cardDesc} numberOfLines={1}>{item.description}</Text>
+          ) : null}
           <View style={styles.cardStats}>
             <Text style={styles.statText}>🔗 {item.link_count}</Text>
             <Text style={styles.statText}>♡ {item.like_count}</Text>
@@ -194,6 +197,7 @@ const styles = StyleSheet.create({
   cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   cardNickname: { fontSize: 12, color: '#888', flex: 1 },
   blueCheck: { fontSize: 12, color: '#2563EB', fontWeight: '700' },
+  cardDesc: { fontSize: 11, color: '#9CA3AF', lineHeight: 16, marginTop: 1 },
   cardStats: { flexDirection: 'row', gap: 10, marginTop: 2 },
   statText: { fontSize: 12, color: '#9CA3AF' },
 

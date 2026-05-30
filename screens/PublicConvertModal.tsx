@@ -120,12 +120,6 @@ export default function PublicConvertModal({ visible, collection, linkCount, onC
                       ))}
                     </ScrollView>
 
-                    {!canProceed && (
-                      <Text style={styles.linkHint}>
-                        링크 10개 이상이어야 전체공개로 전환할 수 있어요 (현재 {linkCount}개)
-                      </Text>
-                    )}
-
                     <TouchableOpacity
                       style={[styles.nextBtn, (!category || !canProceed) && styles.nextBtnDisabled]}
                       onPress={() => category && canProceed && setStep(2)}
@@ -133,6 +127,12 @@ export default function PublicConvertModal({ visible, collection, linkCount, onC
                     >
                       <Text style={styles.nextBtnText}>다음</Text>
                     </TouchableOpacity>
+
+                    {!canProceed && (
+                      <Text style={styles.linkHint}>
+                        링크 10개 이상이어야 전체공개로 전환할 수 있어요 (현재 {linkCount}개)
+                      </Text>
+                    )}
                     <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
                       <Text style={styles.closeBtnText}>취소</Text>
                     </TouchableOpacity>

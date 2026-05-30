@@ -150,17 +150,20 @@ export default function HomeScreen({ navigation }: Props) {
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [actionSheet, setActionSheet] = useState<ActionSheetState>({ visible: false, options: [] });
   const [publicConvertModal, setPublicConvertModal] = useState<{ col: Collection } | null>(null);
+  const [subColIds, setSubColIds] = useState<string[]>([]);
+  const [subColNames, setSubColNames] = useState<Record<string, string>>({});
+  const [subLinks, setSubLinks] = useState<Link[]>([]);
   const inputRef = useRef<TextInput>(null);
   const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map());
 
   // 클립별 링크 갯수 (10개 이상일 때 탭에 표시)
   const linkCountByCollection = useMemo(() => {
     const map: Record<string, number> = {};
-    links.forEach(l => {
+    [...links, ...subLinks].forEach(l => {
       if (l.collection_id) map[l.collection_id] = (map[l.collection_id] || 0) + 1;
     });
     return map;
-  }, [links]);
+  }, [links, subLinks]);
 
   const fetchAll = async () => {
     const [linksRes, colsRes, reactionsRes] = await Promise.all([
@@ -191,6 +194,32 @@ export default function HomeScreen({ navigation }: Props) {
         map[r.link_id].add(r.user_id);
       });
       setReactions(map);
+    }
+
+    // 구독 클립 fetch
+    const subColsRes = await supabase
+      .from('collection_subscriptions')
+      .select('collection_id')
+      .eq('user_id', session!.user.id);
+    if (!subColsRes.error && subColsRes.data && subColsRes.data.length > 0) {
+      const ids = subColsRes.data.map(s => s.collection_id);
+      const [pubColsRes, subLinksRes] = await Promise.all([
+        supabase.rpc('get_public_collections', { p_category: null }),
+        supabase.from('links').select('id, url, title, description, image_url, collection_id, created_at')
+          .in('collection_id', ids).order('created_at', { ascending: false }),
+      ]);
+      if (!pubColsRes.error && pubColsRes.data) {
+        const filtered = (pubColsRes.data as any[]).filter(c => ids.includes(c.id));
+        const nameMap: Record<string, string> = {};
+        filtered.forEach(c => { nameMap[c.id] = c.name; });
+        setSubColIds(ids);
+        setSubColNames(nameMap);
+      }
+      if (!subLinksRes.error && subLinksRes.data) setSubLinks(subLinksRes.data);
+    } else {
+      setSubColIds([]);
+      setSubColNames({});
+      setSubLinks([]);
     }
     setLoading(false);
   };
@@ -495,11 +524,14 @@ export default function HomeScreen({ navigation }: Props) {
     ]);
   };
 
+  const isSubTab = typeof selectedCollectionId === 'string' && subColIds.includes(selectedCollectionId);
   const filteredLinks =
     selectedCollectionId === 'all'
       ? links
       : selectedCollectionId === null
       ? links.filter((l) => l.collection_id === null)
+      : isSubTab
+      ? subLinks.filter((l) => l.collection_id === selectedCollectionId)
       : links.filter((l) => l.collection_id === selectedCollectionId);
 
   const isLinkInSharedCollection = (link: Link): boolean => {
@@ -534,6 +566,7 @@ export default function HomeScreen({ navigation }: Props) {
         }}
         onLongPress={
           editMode ? undefined :
+          subColIds.includes(item.collection_id ?? '') ? undefined :
           linkIsShared
             ? () => handleToggleLike(item.id)
             : () => {
@@ -589,6 +622,9 @@ export default function HomeScreen({ navigation }: Props) {
 
     if (editMode) return cardContent;
 
+    const isSubLink = subColIds.includes(item.collection_id ?? '');
+    if (isSubLink) return cardContent;
+
     return (
       <Swipeable
         ref={ref => swipeableRefs.current.set(item.id, ref)}
@@ -601,9 +637,10 @@ export default function HomeScreen({ navigation }: Props) {
     );
   };
 
-  const tabs: Array<{ id: string | 'all'; label: string; col?: Collection }> = [
+  const tabs: Array<{ id: string | 'all'; label: string; col?: Collection; isSubscribed?: boolean }> = [
     { id: 'all', label: '전체' },
     ...collections.map((c) => ({ id: c.id, label: c.name, col: c })),
+    ...subColIds.map((id) => ({ id, label: subColNames[id] ?? '구독클립', isSubscribed: true })),
   ];
 
   return (
@@ -652,8 +689,9 @@ export default function HomeScreen({ navigation }: Props) {
                 activeOpacity={0.7}
               >
                 <Text style={[styles.tabText, selectedCollectionId === tab.id && styles.tabTextActive]}>
-                  {tab.col?.is_public ? '🌐 ' : tab.col?.is_shared ? '🔗 ' : ''}{tab.label}
-                  {tab.col ? ` ${linkCountByCollection[tab.col.id] ?? 0}` : ''}
+                  {tab.isSubscribed ? '💫 ' : tab.col?.is_public ? '🌐 ' : tab.col?.is_shared ? '🔗 ' : ''}
+                  {tab.label}
+                  {(tab.col || tab.isSubscribed) ? ` ${linkCountByCollection[tab.id as string] ?? 0}` : ''}
                 </Text>
               </TouchableOpacity>
               {editMode && tab.col && (

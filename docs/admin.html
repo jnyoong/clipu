@@ -56,6 +56,15 @@
     .bar-bg { flex: 1; background: #F3F4F6; border-radius: 4px; height: 20px; overflow: hidden; }
     .bar-fill { background: #2563EB; height: 100%; border-radius: 4px; transition: width 0.3s; }
     .bar-count { font-size: 12px; color: #555; width: 30px; text-align: right; }
+    .tab-bar { display: flex; gap: 8px; margin-bottom: 24px; }
+    .tab-btn { padding: 8px 20px; border-radius: 10px; border: 1.5px solid #E5E7EB; background: #fff; font-size: 14px; font-weight: 600; cursor: pointer; color: #555; }
+    .tab-btn.active { background: #2563EB; color: #fff; border-color: #2563EB; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .btn-hide { background: #FEF3C7; color: #92400E; border: none; border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 500; margin-right: 4px; }
+    .btn-hide:hover { background: #FDE68A; }
+    .badge-public { background: #D1FAE5; color: #065F46; font-size: 11px; padding: 2px 8px; border-radius: 6px; }
+    .badge-hidden { background: #FEE2E2; color: #991B1B; font-size: 11px; padding: 2px 8px; border-radius: 6px; }
   </style>
 </head>
 <body>
@@ -132,9 +141,24 @@
         <div id="trendChart"><span style="color:#aaa;font-size:13px">불러오는 중...</span></div>
       </div>
 
+      <!-- 탭 -->
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('users')">👥 사용자 관리</button>
+        <button class="tab-btn" onclick="switchTab('clips')">🌐 공개 클립 관리</button>
+      </div>
+
+      <!-- 사용자 관리 탭 -->
+      <div id="tab-users" class="tab-content active">
       <div class="section-title">사용자 관리</div>
       <input class="search-bar" type="text" id="searchInput" placeholder="이메일 검색..." oninput="filterUsers()" />
       <div id="userTableWrap" class="loading">불러오는 중...</div>
+      </div><!-- /tab-users -->
+
+      <!-- 공개 클립 관리 탭 -->
+      <div id="tab-clips" class="tab-content">
+        <div class="section-title">공개 클립 관리</div>
+        <div id="clipsTableWrap" class="loading">불러오는 중...</div>
+      </div><!-- /tab-clips -->
     </div>
   </div>
 
@@ -257,6 +281,94 @@
     async function handleLogout() {
       await sb.auth.signOut();
       location.reload();
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab-btn').forEach((b, i) => {
+        b.classList.toggle('active', ['users','clips'][i] === name);
+      });
+      document.getElementById('tab-users').classList.toggle('active', name === 'users');
+      document.getElementById('tab-clips').classList.toggle('active', name === 'clips');
+      if (name === 'clips') loadPublicClips();
+    }
+
+    let allClips = [];
+
+    async function loadPublicClips() {
+      document.getElementById('clipsTableWrap').innerHTML = '<p class="loading">불러오는 중...</p>';
+      const { data, error } = await sb.rpc('admin_list_public_collections');
+      if (error) {
+        document.getElementById('clipsTableWrap').innerHTML =
+          `<div style="background:#FEF2F2;padding:16px;border-radius:12px;color:#991B1B;">
+            <b>RPC 함수 없음</b><br>Supabase SQL Editor에서 아래 SQL을 먼저 실행해주세요:<br>
+            <pre style="font-size:11px;margin-top:8px;white-space:pre-wrap">${getSqlForAdmin()}</pre>
+          </div>`;
+        return;
+      }
+      allClips = data || [];
+      renderClips(allClips);
+    }
+
+    function renderClips(clips) {
+      if (!clips.length) { document.getElementById('clipsTableWrap').innerHTML = '<p class="loading">공개 클립 없음</p>'; return; }
+      const rows = clips.map(c => `
+        <tr>
+          <td><b>${c.name}</b><br><span style="font-size:12px;color:#888">${c.description ? c.description.slice(0,40)+'...' : '-'}</span></td>
+          <td>${c.category || '-'}</td>
+          <td>${c.owner_email || '-'}<br><span style="font-size:12px;color:#888">${c.owner_nickname || ''}</span></td>
+          <td>링크 ${c.link_count} · ♥${c.like_count} · 구독${c.sub_count}</td>
+          <td>${new Date(c.created_at).toLocaleDateString('ko-KR')}</td>
+          <td>
+            <button class="btn-hide" onclick="setClipPublic('${c.id}', false)">숨김처리</button>
+            <button class="btn-delete" onclick="deleteClipAdmin('${c.id}', '${c.name}')">삭제</button>
+          </td>
+        </tr>`).join('');
+      document.getElementById('clipsTableWrap').innerHTML = `
+        <table>
+          <thead><tr><th>클립명</th><th>카테고리</th><th>소유자</th><th>통계</th><th>공개일</th><th>관리</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    async function setClipPublic(clipId, isPublic) {
+      const msg = isPublic ? '이 클립을 다시 공개할까요?' : '이 클립을 숨김 처리할까요?';
+      if (!confirm(msg)) return;
+      const { error } = await sb.rpc('admin_set_collection_public', { p_collection_id: clipId, p_is_public: isPublic });
+      if (error) { alert('처리 실패: ' + error.message); return; }
+      allClips = allClips.filter(c => c.id !== clipId);
+      renderClips(allClips);
+    }
+
+    async function deleteClipAdmin(clipId, name) {
+      if (!confirm(`"${name}" 클립을 완전히 삭제할까요?\n링크도 모두 삭제됩니다.`)) return;
+      const { error } = await sb.from('collections').delete().eq('id', clipId);
+      if (error) { alert('삭제 실패: ' + error.message); return; }
+      allClips = allClips.filter(c => c.id !== clipId);
+      renderClips(allClips);
+    }
+
+    function getSqlForAdmin() {
+      return `-- 1. admin_list_public_collections
+CREATE OR REPLACE FUNCTION admin_list_public_collections()
+RETURNS TABLE(id uuid,name text,description text,category text,owner_id uuid,owner_email text,owner_nickname text,link_count bigint,like_count bigint,sub_count bigint,created_at timestamptz)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT (auth.jwt()->'user_metadata'->>'is_admin')::boolean THEN RAISE EXCEPTION 'Not authorized'; END IF;
+  RETURN QUERY SELECT c.id,c.name,c.description,c.category,c.user_id,u.email,(u.raw_user_meta_data->>'nickname')::text,
+    (SELECT COUNT(*) FROM links l WHERE l.collection_id=c.id),
+    (SELECT COUNT(*) FROM collection_likes cl WHERE cl.collection_id=c.id),
+    (SELECT COUNT(*) FROM collection_subscriptions cs WHERE cs.collection_id=c.id),
+    c.created_at
+  FROM collections c JOIN auth.users u ON u.id=c.user_id WHERE c.is_public=true ORDER BY c.created_at DESC;
+END;$$;
+
+-- 2. admin_set_collection_public
+CREATE OR REPLACE FUNCTION admin_set_collection_public(p_collection_id uuid, p_is_public boolean)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT (auth.jwt()->'user_metadata'->>'is_admin')::boolean THEN RAISE EXCEPTION 'Not authorized'; END IF;
+  UPDATE collections SET is_public=p_is_public WHERE id=p_collection_id;
+END;$$;`;
     }
 
     // 이미 로그인 상태 확인

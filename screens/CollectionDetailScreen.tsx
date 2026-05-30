@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Image, Linking, Alert,
+  ActivityIndicator, Image, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -88,7 +88,7 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
 
   const fetchDetail = async () => {
     const [colRes, linksRes, likeRes, subRes] = await Promise.all([
-      supabase.rpc('get_public_collections').then(({ data }) =>
+      supabase.rpc('get_public_collections', { p_category: null }).then(({ data }) =>
         (data as DetailCollection[] | null)?.find(c => c.id === collectionId) ?? null
       ),
       supabase
@@ -245,6 +245,7 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
               )}
             </TouchableOpacity>
           </View>
+          <Text style={styles.subscribeHint}>구독하면 홈에서 이 클립의 링크를 바로 볼 수 있어요</Text>
 
           <View style={styles.divider} />
 
@@ -258,12 +259,7 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
             <Text style={styles.noLinks}>링크가 없어요.</Text>
           ) : (
             links.map((link) => (
-              <TouchableOpacity
-                key={link.id}
-                style={styles.linkCard}
-                onPress={() => Linking.openURL(link.url)}
-                activeOpacity={0.75}
-              >
+              <View key={link.id} style={styles.linkCard}>
                 {link.image_url ? (
                   <Image source={{ uri: link.image_url }} style={styles.linkImage} resizeMode="cover" />
                 ) : (() => {
@@ -286,7 +282,7 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
                   ) : null}
                 </View>
                 <Ionicons name="open-outline" size={16} color="#CBD5E1" style={styles.linkExternal} />
-              </TouchableOpacity>
+              </View>
             ))
           )}
 
@@ -368,6 +364,7 @@ const styles = StyleSheet.create({
   subCount: { fontSize: 13, color: '#2563EB', fontWeight: '600' },
   subCountActive: { color: '#fff' },
 
+  subscribeHint: { fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginTop: -6 },
   divider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 4 },
 
   linksHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

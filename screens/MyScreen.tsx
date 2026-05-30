@@ -209,14 +209,16 @@ export default function MyScreen() {
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <TouchableOpacity
-                    style={styles.nicknameRow}
-                    onPress={() => setEditingNickname(true)}
-                    activeOpacity={0.7}
-                  >
+                  <View style={styles.nicknameRow}>
                     <Text style={styles.nicknameText}>{defaultNickname}</Text>
-                    <Ionicons name="pencil-outline" size={14} color="#9CA3AF" />
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.editNicknameBtn}
+                      onPress={() => setEditingNickname(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.editNicknameBtnText}>수정</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
                 <Text style={styles.emailText}>{session?.user.email}</Text>
               </View>
@@ -357,6 +359,11 @@ const styles = StyleSheet.create({
   profileInfo: { flex: 1, gap: 4 },
   nicknameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   nicknameText: { fontSize: 17, fontWeight: '700', color: '#111' },
+  editNicknameBtn: {
+    backgroundColor: '#EFF6FF', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  editNicknameBtnText: { fontSize: 13, color: '#2563EB', fontWeight: '700' },
   emailText: { fontSize: 13, color: '#9CA3AF' },
   nicknameEditRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   nicknameInput: {
