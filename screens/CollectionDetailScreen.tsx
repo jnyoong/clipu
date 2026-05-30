@@ -281,7 +281,6 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
                     <Text style={styles.linkNote} numberOfLines={2}>💬 {link.note}</Text>
                   ) : null}
                 </View>
-                <Ionicons name="open-outline" size={16} color="#CBD5E1" style={styles.linkExternal} />
               </View>
             ))
           )}
