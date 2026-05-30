@@ -64,6 +64,25 @@ type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, 'Home'>;
 };
 
+function getServiceBranding(url: string): { bg: string; initial: string; textColor?: string } | null {
+  const u = url.toLowerCase();
+  if (u.includes('instagram.com')) return { bg: '#E1306C', initial: 'IG' };
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return { bg: '#FF0000', initial: 'YT' };
+  if (u.includes('blog.naver.com') || u.includes('naver.com')) return { bg: '#03C75A', initial: 'N' };
+  if (u.includes('x.com') || u.includes('twitter.com')) return { bg: '#000', initial: 'X' };
+  if (u.includes('tiktok.com')) return { bg: '#010101', initial: 'TT' };
+  if (u.includes('facebook.com') || u.includes('fb.com')) return { bg: '#1877F2', initial: 'f' };
+  if (u.includes('linkedin.com')) return { bg: '#0A66C2', initial: 'in' };
+  if (u.includes('github.com')) return { bg: '#24292E', initial: 'GH' };
+  if (u.includes('reddit.com')) return { bg: '#FF4500', initial: 'Rd' };
+  if (u.includes('pinterest.com')) return { bg: '#E60023', initial: 'P' };
+  if (u.includes('kakao.com')) return { bg: '#FEE500', initial: 'K', textColor: '#000' };
+  if (u.includes('brunch.co.kr')) return { bg: '#00C4B0', initial: 'Br' };
+  if (u.includes('notion.so')) return { bg: '#000', initial: 'N' };
+  if (u.includes('medium.com')) return { bg: '#000', initial: 'M' };
+  return null;
+}
+
 function ActionSheet({ visible, title, options, onClose }: ActionSheetState & { onClose: () => void }) {
   if (!visible) return null;
   const normalOptions = options.filter(o => o.style !== 'cancel');
@@ -534,9 +553,18 @@ export default function HomeScreen({ navigation }: Props) {
         <View style={styles.cardImageWrapper}>
           {item.image_url ? (
             <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover" />
-          ) : (
-            <View style={[styles.cardImage, styles.cardImagePlaceholder]} />
-          )}
+          ) : (() => {
+            const brand = getServiceBranding(item.url);
+            return brand ? (
+              <View style={[styles.cardImage, { backgroundColor: brand.bg, justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={{ color: brand.textColor ?? '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 0.5 }}>
+                  {brand.initial}
+                </Text>
+              </View>
+            ) : (
+              <View style={[styles.cardImage, styles.cardImagePlaceholder]} />
+            );
+          })()}
           {editMode && (
             <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
               {isSelected && <Text style={styles.checkboxTick}>✓</Text>}
@@ -625,8 +653,7 @@ export default function HomeScreen({ navigation }: Props) {
               >
                 <Text style={[styles.tabText, selectedCollectionId === tab.id && styles.tabTextActive]}>
                   {tab.col?.is_public ? '🌐 ' : tab.col?.is_shared ? '🔗 ' : ''}{tab.label}
-                  {tab.col && (linkCountByCollection[tab.col.id] ?? 0) >= 10
-                    ? ` ${linkCountByCollection[tab.col.id]}` : ''}
+                  {tab.col ? ` ${linkCountByCollection[tab.col.id] ?? 0}` : ''}
                 </Text>
               </TouchableOpacity>
               {editMode && tab.col && (

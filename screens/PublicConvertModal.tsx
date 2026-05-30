@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, TouchableWithoutFeedback,
   TextInput, StyleSheet, ScrollView, ActivityIndicator, Alert,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { Collection } from './CollectionsScreen';
@@ -37,79 +38,75 @@ export default function PublicConvertModal({ visible, collection, linkCount, onC
     onClose();
   };
 
-  const handleConfirm = async () => {
-    if (linkCount < 10) {
-      Alert.alert('링크 부족', `전체공개 전환은 링크 10개 이상 필요해요.\n현재 ${linkCount}개 저장되어 있어요.`);
-      return;
-    }
-    if (!category) {
-      Alert.alert('카테고리 선택', '카테고리를 선택해주세요.');
-      return;
-    }
-    if (description.trim().length < 20) {
-      Alert.alert('소개글 부족', '소개글은 20자 이상 입력해주세요.');
-      return;
-    }
+  const handleConfirm = () => {
+    if (!category || description.trim().length < 20) return;
 
-    setSaving(true);
-    const { data, error } = await supabase
-      .from('collections')
-      .update({ is_public: true, category, description: description.trim() })
-      .eq('id', collection.id)
-      .select('id, name, user_id, is_shared, invite_code, is_public, description, category, cover_url')
-      .single();
-
-    setSaving(false);
-    if (error) {
-      Alert.alert('오류', '전환 중 오류가 발생했어요.');
-      return;
-    }
-    onConverted({ ...data, role: collection.role });
-    reset();
-  };
-
-  const handleCancelPublic = async () => {
-    Alert.alert('공개 취소', `"${collection.name}" 전체공개를 취소할까요?`, [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '공개 취소',
-        style: 'destructive',
-        onPress: async () => {
-          await supabase.from('collections').update({ is_public: false }).eq('id', collection.id);
-          onConverted({ ...collection, is_public: false });
-          reset();
+    Alert.alert(
+      '전체공개 확인',
+      '전체공개 후에는 취소할 수 없어요.\n탐색 탭에 영구 노출됩니다. 계속할까요?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '공개하기',
+          onPress: async () => {
+            setSaving(true);
+            const { data, error } = await supabase
+              .from('collections')
+              .update({ is_public: true, category, description: description.trim() })
+              .eq('id', collection.id)
+              .select('id, name, user_id, is_shared, invite_code, is_public, description, category, cover_url')
+              .single();
+            setSaving(false);
+            if (error) {
+              Alert.alert('오류', '전환 중 오류가 발생했어요.');
+              return;
+            }
+            onConverted({ ...data, role: collection.role });
+            reset();
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
+
+  const canProceed = linkCount >= 10;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <TouchableWithoutFeedback onPress={handleClose}>
-        <View style={styles.overlay}>
-          <TouchableWithoutFeedback>
-            <View style={styles.sheet}>
-              <View style={styles.handle} />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={handleClose}>
+          <View style={styles.overlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.sheet}>
+                <View style={styles.handle} />
 
-              {/* 이미 공개 중인 경우 */}
-              {collection.is_public ? (
-                <View style={styles.content}>
-                  <Text style={styles.title}>전체공개 클립</Text>
-                  <Text style={styles.subtitle}>현재 탐색 탭에 공개되어 있어요.</Text>
-                  <TouchableOpacity style={styles.cancelPublicBtn} onPress={handleCancelPublic}>
-                    <Text style={styles.cancelPublicText}>공개 취소하기</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
-                    <Text style={styles.closeBtnText}>닫기</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : step === 1 ? (
-                /* Step 1: 카테고리 선택 */
-                <View style={styles.content}>
-                  <Text style={styles.title}>전체공개로 전환</Text>
-                  <Text style={styles.subtitle}>클립의 카테고리를 선택해주세요</Text>
-                  <ScrollView style={styles.categoryScroll} showsVerticalScrollIndicator={false}>
-                    <View style={styles.categoryGrid}>
+                {collection.is_public ? (
+                  /* 이미 공개 중 */
+                  <View style={styles.content}>
+                    <Text style={styles.title}>전체공개 클립 🌐</Text>
+                    <Text style={styles.subtitle}>현재 탐색 탭에 공개되어 있어요.</Text>
+                    <View style={styles.infoBox}>
+                      <Text style={styles.infoText}>카테고리: {collection.category}</Text>
+                      <Text style={styles.infoHint}>전체공개는 한 번 설정하면 취소할 수 없어요.</Text>
+                    </View>
+                    <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
+                      <Text style={styles.closeBtnText}>확인</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : step === 1 ? (
+                  /* Step 1: 카테고리 선택 */
+                  <View style={styles.content}>
+                    <Text style={styles.title}>전체공개로 전환</Text>
+                    <Text style={styles.subtitle}>클립의 카테고리를 선택해주세요</Text>
+
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.categoryRow}
+                    >
                       {CATEGORIES.map((cat) => (
                         <TouchableOpacity
                           key={cat}
@@ -121,64 +118,66 @@ export default function PublicConvertModal({ visible, collection, linkCount, onC
                           </Text>
                         </TouchableOpacity>
                       ))}
-                    </View>
-                  </ScrollView>
-                  <TouchableOpacity
-                    style={[styles.nextBtn, !category && styles.nextBtnDisabled]}
-                    onPress={() => category && setStep(2)}
-                    disabled={!category}
-                  >
-                    <Text style={styles.nextBtnText}>다음</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
-                    <Text style={styles.closeBtnText}>취소</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                /* Step 2: 소개글 입력 */
-                <View style={styles.content}>
-                  <Text style={styles.title}>클립 소개글</Text>
-                  <Text style={styles.subtitle}>어떤 링크를 모았는지 알려주세요 (최소 20자)</Text>
-                  <TextInput
-                    style={styles.descInput}
-                    placeholder="예: 2026년 상반기 마케터들이 실제로 참고한 쇼츠 광고 레퍼런스만 모았어요."
-                    placeholderTextColor="#aaa"
-                    value={description}
-                    onChangeText={setDescription}
-                    multiline
-                    maxLength={200}
-                    textAlignVertical="top"
-                  />
-                  <Text style={styles.charCount}>{description.length}/200</Text>
+                    </ScrollView>
 
-                  {linkCount < 10 && (
-                    <View style={styles.warnBox}>
-                      <Text style={styles.warnText}>⚠️ 링크가 {linkCount}개예요. 전체공개는 10개 이상 필요해요.</Text>
-                    </View>
-                  )}
+                    {!canProceed && (
+                      <Text style={styles.linkHint}>
+                        링크 10개 이상이어야 전체공개로 전환할 수 있어요 (현재 {linkCount}개)
+                      </Text>
+                    )}
 
-                  <View style={styles.btnRow}>
-                    <TouchableOpacity style={styles.backBtn} onPress={() => setStep(1)}>
-                      <Text style={styles.backBtnText}>이전</Text>
-                    </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.confirmBtn, (description.trim().length < 20 || linkCount < 10) && styles.confirmBtnDisabled]}
-                      onPress={handleConfirm}
-                      disabled={description.trim().length < 20 || linkCount < 10 || saving}
+                      style={[styles.nextBtn, (!category || !canProceed) && styles.nextBtnDisabled]}
+                      onPress={() => category && canProceed && setStep(2)}
+                      disabled={!category || !canProceed}
                     >
-                      {saving ? (
-                        <ActivityIndicator color="#fff" size="small" />
-                      ) : (
-                        <Text style={styles.confirmBtnText}>공개하기</Text>
-                      )}
+                      <Text style={styles.nextBtnText}>다음</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
+                      <Text style={styles.closeBtnText}>취소</Text>
                     </TouchableOpacity>
                   </View>
-                </View>
-              )}
-            </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </TouchableWithoutFeedback>
+                ) : (
+                  /* Step 2: 소개글 입력 */
+                  <View style={styles.content}>
+                    <Text style={styles.title}>클립 소개글</Text>
+                    <Text style={styles.subtitle}>어떤 링크를 모았는지 알려주세요 (최소 20자)</Text>
+                    <TextInput
+                      style={styles.descInput}
+                      placeholder="예: 2026년 상반기 마케터들이 실제로 참고한 쇼츠 광고 레퍼런스만 모았어요."
+                      placeholderTextColor="#aaa"
+                      value={description}
+                      onChangeText={setDescription}
+                      multiline
+                      maxLength={200}
+                      textAlignVertical="top"
+                      blurOnSubmit
+                    />
+                    <Text style={styles.charCount}>{description.length}/200</Text>
+
+                    <View style={styles.btnRow}>
+                      <TouchableOpacity style={styles.backBtn} onPress={() => setStep(1)}>
+                        <Text style={styles.backBtnText}>이전</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.confirmBtn, description.trim().length < 20 && styles.confirmBtnDisabled]}
+                        onPress={handleConfirm}
+                        disabled={description.trim().length < 20 || saving}
+                      >
+                        {saving ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <Text style={styles.confirmBtnText}>공개하기</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -189,7 +188,7 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingBottom: 40, paddingHorizontal: 20, paddingTop: 12, minHeight: 360,
+    paddingBottom: 40, paddingHorizontal: 20, paddingTop: 12, minHeight: 320,
   },
   handle: {
     width: 36, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2,
@@ -199,8 +198,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: '700', color: '#111' },
   subtitle: { fontSize: 14, color: '#666', lineHeight: 20 },
 
-  categoryScroll: { maxHeight: 200 },
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  categoryRow: { flexDirection: 'row', gap: 10, paddingVertical: 4 },
   categoryPill: {
     paddingHorizontal: 16, paddingVertical: 10,
     borderRadius: 20, borderWidth: 1.5, borderColor: '#E5E7EB',
@@ -210,9 +208,11 @@ const styles = StyleSheet.create({
   categoryText: { fontSize: 14, color: '#555', fontWeight: '500' },
   categoryTextActive: { color: '#2563EB', fontWeight: '700' },
 
+  linkHint: { fontSize: 12, color: '#EF4444', textAlign: 'center' },
+
   nextBtn: {
     backgroundColor: '#2563EB', borderRadius: 14,
-    paddingVertical: 14, alignItems: 'center', marginTop: 4,
+    paddingVertical: 14, alignItems: 'center',
   },
   nextBtnDisabled: { backgroundColor: '#93C5FD' },
   nextBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
@@ -223,13 +223,7 @@ const styles = StyleSheet.create({
   },
   charCount: { fontSize: 12, color: '#999', textAlign: 'right', marginTop: -6 },
 
-  warnBox: {
-    backgroundColor: '#FFF7ED', borderRadius: 10, padding: 12,
-    borderWidth: 1, borderColor: '#FED7AA',
-  },
-  warnText: { fontSize: 13, color: '#92400E' },
-
-  btnRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  btnRow: { flexDirection: 'row', gap: 10 },
   backBtn: {
     flex: 1, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 14,
     paddingVertical: 14, alignItems: 'center',
@@ -242,11 +236,12 @@ const styles = StyleSheet.create({
   confirmBtnDisabled: { backgroundColor: '#93C5FD' },
   confirmBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  cancelPublicBtn: {
-    borderWidth: 1.5, borderColor: '#EF4444', borderRadius: 14,
-    paddingVertical: 14, alignItems: 'center', marginTop: 8,
+  infoBox: {
+    backgroundColor: '#F9FAFB', borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: '#E5E7EB', gap: 6,
   },
-  cancelPublicText: { fontSize: 15, color: '#EF4444', fontWeight: '600' },
+  infoText: { fontSize: 14, color: '#374151', fontWeight: '500' },
+  infoHint: { fontSize: 12, color: '#999' },
 
   closeBtn: { paddingVertical: 14, alignItems: 'center' },
   closeBtnText: { fontSize: 15, color: '#888' },

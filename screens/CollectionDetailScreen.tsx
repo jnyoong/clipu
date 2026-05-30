@@ -47,6 +47,25 @@ const CATEGORY_COLORS: Record<string, string> = {
   '투자/금융': '#FEE2E2', '라이프': '#F0FDF4', '패션': '#FDF4FF', '기타': '#F3F4F6',
 };
 
+function getServiceBranding(url: string): { bg: string; initial: string; textColor?: string } | null {
+  const u = url.toLowerCase();
+  if (u.includes('instagram.com')) return { bg: '#E1306C', initial: 'IG' };
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return { bg: '#FF0000', initial: 'YT' };
+  if (u.includes('blog.naver.com') || u.includes('naver.com')) return { bg: '#03C75A', initial: 'N' };
+  if (u.includes('x.com') || u.includes('twitter.com')) return { bg: '#000', initial: 'X' };
+  if (u.includes('tiktok.com')) return { bg: '#010101', initial: 'TT' };
+  if (u.includes('facebook.com') || u.includes('fb.com')) return { bg: '#1877F2', initial: 'f' };
+  if (u.includes('linkedin.com')) return { bg: '#0A66C2', initial: 'in' };
+  if (u.includes('github.com')) return { bg: '#24292E', initial: 'GH' };
+  if (u.includes('reddit.com')) return { bg: '#FF4500', initial: 'Rd' };
+  if (u.includes('pinterest.com')) return { bg: '#E60023', initial: 'P' };
+  if (u.includes('kakao.com')) return { bg: '#FEE500', initial: 'K', textColor: '#000' };
+  if (u.includes('brunch.co.kr')) return { bg: '#00C4B0', initial: 'Br' };
+  if (u.includes('notion.so')) return { bg: '#000', initial: 'N' };
+  if (u.includes('medium.com')) return { bg: '#000', initial: 'M' };
+  return null;
+}
+
 function getCategoryEmoji(category: string): string {
   const map: Record<string, string> = {
     '맛집': '🍜', '마케팅': '📣', '디자인': '🎨', 'IT/개발': '💻',
@@ -247,9 +266,18 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
               >
                 {link.image_url ? (
                   <Image source={{ uri: link.image_url }} style={styles.linkImage} resizeMode="cover" />
-                ) : (
-                  <View style={[styles.linkImage, styles.linkImagePlaceholder]} />
-                )}
+                ) : (() => {
+                  const brand = getServiceBranding(link.url);
+                  return brand ? (
+                    <View style={[styles.linkImage, { backgroundColor: brand.bg, justifyContent: 'center', alignItems: 'center' }]}>
+                      <Text style={{ color: brand.textColor ?? '#fff', fontSize: 12, fontWeight: '800' }}>
+                        {brand.initial}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.linkImage, styles.linkImagePlaceholder]} />
+                  );
+                })()}
                 <View style={styles.linkBody}>
                   <Text style={styles.linkTitle} numberOfLines={2}>{link.title || link.url}</Text>
                   <Text style={styles.linkDomain}>{getDomain(link.url)}</Text>
