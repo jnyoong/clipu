@@ -6,6 +6,8 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { Collection } from './CollectionsScreen';
+import { useAuth } from '../contexts/AuthContext';
+import { sendNewPublicCollectionNotification } from '../lib/pushNotifications';
 
 const CATEGORIES = [
   '맛집', '마케팅', '디자인', 'IT/개발', '교육',
@@ -21,6 +23,7 @@ type Props = {
 };
 
 export default function PublicConvertModal({ visible, collection, linkCount, onClose, onConverted }: Props) {
+  const { session } = useAuth();
   const [step, setStep] = useState<1 | 2>(1);
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
@@ -61,6 +64,12 @@ export default function PublicConvertModal({ visible, collection, linkCount, onC
               Alert.alert('오류', '전환 중 오류가 발생했어요.');
               return;
             }
+            // 기존 구독자들에게 새 공개 클립 알림 발송
+            const ownerNickname = session?.user.user_metadata?.nickname
+              || session?.user.email?.split('@')[0] || '';
+            sendNewPublicCollectionNotification(
+              data.id, data.name, session?.user.id ?? '', ownerNickname
+            );
             onConverted({ ...data, role: collection.role });
             reset();
           },

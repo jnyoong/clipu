@@ -66,20 +66,23 @@ type Props = {
 
 function getServiceBranding(url: string): { bg: string; initial: string; textColor?: string } | null {
   const u = url.toLowerCase();
-  if (u.includes('instagram.com')) return { bg: '#E1306C', initial: 'IG' };
-  if (u.includes('youtube.com') || u.includes('youtu.be')) return { bg: '#FF0000', initial: 'YT' };
-  if (u.includes('blog.naver.com') || u.includes('naver.com')) return { bg: '#03C75A', initial: 'N' };
+  if (u.includes('instagram.com') || u.includes('instagr.am') || u.includes('cdninstagram.com')) return { bg: '#E1306C', initial: 'IG' };
+  if (u.includes('youtube.com') || u.includes('youtu.be') || u.includes('youtube-nocookie.com')) return { bg: '#FF0000', initial: 'YT' };
+  if (u.includes('naver.com') || u.includes('naver.me') || u.includes('blog.naver') || u.includes('m.blog.naver')) return { bg: '#03C75A', initial: 'N' };
   if (u.includes('x.com') || u.includes('twitter.com')) return { bg: '#000', initial: 'X' };
-  if (u.includes('tiktok.com')) return { bg: '#010101', initial: 'TT' };
-  if (u.includes('facebook.com') || u.includes('fb.com')) return { bg: '#1877F2', initial: 'f' };
+  if (u.includes('tiktok.com') || u.includes('vm.tiktok.com')) return { bg: '#010101', initial: 'TT' };
+  if (u.includes('facebook.com') || u.includes('fb.com') || u.includes('fb.me')) return { bg: '#1877F2', initial: 'f' };
   if (u.includes('linkedin.com')) return { bg: '#0A66C2', initial: 'in' };
   if (u.includes('github.com')) return { bg: '#24292E', initial: 'GH' };
   if (u.includes('reddit.com')) return { bg: '#FF4500', initial: 'Rd' };
-  if (u.includes('pinterest.com')) return { bg: '#E60023', initial: 'P' };
-  if (u.includes('kakao.com')) return { bg: '#FEE500', initial: 'K', textColor: '#000' };
+  if (u.includes('pinterest.com') || u.includes('pin.it')) return { bg: '#E60023', initial: 'P' };
+  if (u.includes('kakao.com') || u.includes('kakaocorp.com') || u.includes('kko.to')) return { bg: '#FEE500', initial: 'K', textColor: '#000' };
   if (u.includes('brunch.co.kr')) return { bg: '#00C4B0', initial: 'Br' };
   if (u.includes('notion.so')) return { bg: '#000', initial: 'N' };
   if (u.includes('medium.com')) return { bg: '#000', initial: 'M' };
+  if (u.includes('threads.net')) return { bg: '#000', initial: 'TH' };
+  if (u.includes('band.us')) return { bg: '#1CB955', initial: 'B' };
+  if (u.includes('daum.net') || u.includes('daum.kakao.com')) return { bg: '#0066CC', initial: 'D', textColor: '#fff' };
   return null;
 }
 
@@ -208,14 +211,25 @@ export default function HomeScreen({ navigation }: Props) {
         supabase.from('links').select('id, url, title, description, image_url, collection_id, created_at')
           .in('collection_id', ids).order('created_at', { ascending: false }),
       ]);
+      let filteredSubIds: string[] = [];
       if (!pubColsRes.error && pubColsRes.data) {
-        const filtered = (pubColsRes.data as any[]).filter(c => ids.includes(c.id));
+        // 자기 자신의 클립은 구독 탭에서 제외 (중복 탭·갯수 2배 방지)
+        const filtered = (pubColsRes.data as any[]).filter(
+          c => ids.includes(c.id) && c.owner_id !== session!.user.id
+        );
+        filteredSubIds = filtered.map(c => c.id);
         const nameMap: Record<string, string> = {};
         filtered.forEach(c => { nameMap[c.id] = c.name; });
-        setSubColIds(ids);
+        setSubColIds(filteredSubIds);
         setSubColNames(nameMap);
       }
-      if (!subLinksRes.error && subLinksRes.data) setSubLinks(subLinksRes.data);
+      if (!subLinksRes.error && subLinksRes.data) {
+        setSubLinks(
+          filteredSubIds.length > 0
+            ? subLinksRes.data.filter(l => l.collection_id && filteredSubIds.includes(l.collection_id))
+            : []
+        );
+      }
     } else {
       setSubColIds([]);
       setSubColNames({});

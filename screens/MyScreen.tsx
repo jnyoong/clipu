@@ -22,6 +22,13 @@ type ColStat = {
   subCount: number;
 };
 
+type CuratorInfo = {
+  owner_id: string;
+  owner_nickname: string;
+  blue_check: boolean;
+  collections: Array<{ id: string; name: string; like_count: number; sub_count: number }>;
+};
+
 function timeAgo(dateStr: string): string {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (diff < 60) return '방금 전';
@@ -38,6 +45,7 @@ export default function MyScreen() {
   const [savingNickname, setSavingNickname] = useState(false);
   const [publicCols, setPublicCols] = useState<ColStat[]>([]);
   const [notifications, setNotifications] = useState<NotifItem[]>([]);
+  const [subscribedCurators, setSubscribedCurators] = useState<CuratorInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
 
@@ -48,6 +56,7 @@ export default function MyScreen() {
   const fetchData = async () => {
     if (!session) return;
 
+    // 내 공개 클립 조회
     const { data: myCols } = await supabase
       .from('collections')
       .select('id, name')
@@ -58,17 +67,16 @@ export default function MyScreen() {
     const colNameMap: Record<string, string> = {};
     (myCols ?? []).forEach((c) => { colNameMap[c.id] = c.name; });
 
-    if (colIds.length > 0) {
-      const [statsRes, likesRes, subsRes] = await Promise.all([
-        supabase.rpc('get_public_collections', { p_category: null }),
-        supabase.from('collection_likes').select('collection_id, created_at')
-          .in('collection_id', colIds).order('created_at', { ascending: false }).limit(40),
-        supabase.from('collection_subscriptions').select('collection_id, created_at')
-          .in('collection_id', colIds).order('created_at', { ascending: false }).limit(40),
-      ]);
+    // 구독 정보 + 공개 클립 전체 동시 조회
+    const [mySubs, pubColsRes] = await Promise.all([
+      supabase.from('collection_subscriptions').select('collection_id').eq('user_id', session.user.id),
+      supabase.rpc('get_public_collections', { p_category: null }),
+    ]);
 
+    // 내 공개 클립 통계
+    if (colIds.length > 0 && !pubColsRes.error && pubColsRes.data) {
       const statMap: Record<string, { like: number; sub: number }> = {};
-      ((statsRes.data ?? []) as any[])
+      ((pubColsRes.data ?? []) as any[])
         .filter((c) => c.owner_id === session.user.id)
         .forEach((c) => { statMap[c.id] = { like: c.like_count, sub: c.sub_count }; });
 
@@ -78,6 +86,14 @@ export default function MyScreen() {
         likeCount: statMap[c.id]?.like ?? 0,
         subCount: statMap[c.id]?.sub ?? 0,
       })));
+
+      // 알림 (내 공개 클립에 달린 하트·구독)
+      const [likesRes, subsRes] = await Promise.all([
+        supabase.from('collection_likes').select('collection_id, created_at')
+          .in('collection_id', colIds).order('created_at', { ascending: false }).limit(40),
+        supabase.from('collection_subscriptions').select('collection_id, created_at')
+          .in('collection_id', colIds).order('created_at', { ascending: false }).limit(40),
+      ]);
 
       const notifs: NotifItem[] = [
         ...(likesRes.data ?? []).map((l) => ({
@@ -99,6 +115,36 @@ export default function MyScreen() {
       setPublicCols([]);
       setNotifications([]);
     }
+
+    // 구독 중인 큐레이터
+    if (!mySubs.error && mySubs.data && mySubs.data.length > 0 && !pubColsRes.error && pubColsRes.data) {
+      const subIds = mySubs.data.map((s) => s.collection_id);
+      const myCuratorCols = (pubColsRes.data as any[]).filter(
+        (c) => subIds.includes(c.id) && c.owner_id !== session.user.id
+      );
+
+      const curatorMap: Record<string, CuratorInfo> = {};
+      myCuratorCols.forEach((c) => {
+        if (!curatorMap[c.owner_id]) {
+          curatorMap[c.owner_id] = {
+            owner_id: c.owner_id,
+            owner_nickname: c.owner_nickname || '익명',
+            blue_check: c.blue_check,
+            collections: [],
+          };
+        }
+        curatorMap[c.owner_id].collections.push({
+          id: c.id,
+          name: c.name,
+          like_count: c.like_count,
+          sub_count: c.sub_count,
+        });
+      });
+      setSubscribedCurators(Object.values(curatorMap));
+    } else {
+      setSubscribedCurators([]);
+    }
+
     setLoading(false);
   };
 
@@ -294,6 +340,43 @@ export default function MyScreen() {
             </View>
           )}
 
+          {/* 구독 중인 큐레이터 */}
+          <View style={styles.sectionLabel}>
+            <Text style={styles.sectionLabelText}>구독 중인 큐레이터</Text>
+          </View>
+          {!loading && subscribedCurators.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>구독 중인 큐레이터가 없어요</Text>
+              <Text style={styles.emptyHint}>탐색 탭에서 마음에 드는 클립을 구독해보세요</Text>
+            </View>
+          ) : (
+            <View style={styles.card}>
+              {subscribedCurators.map((curator, i) => (
+                <View key={curator.owner_id} style={[styles.curatorRow, i > 0 && styles.curatorBorder]}>
+                  <View style={styles.curatorAvatar}>
+                    <Text style={styles.curatorAvatarText}>
+                      {curator.owner_nickname.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.curatorInfo}>
+                    <View style={styles.curatorNameRow}>
+                      <Text style={styles.curatorName}>@{curator.owner_nickname}</Text>
+                      {curator.blue_check && (
+                        <View style={styles.curatorBlueCheck}>
+                          <Text style={styles.curatorBlueCheckText}>✓</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.curatorColNames} numberOfLines={1}>
+                      {curator.collections.map((c) => c.name).join(' · ')}
+                    </Text>
+                  </View>
+                  <Text style={styles.curatorSubBadge}>{curator.collections.length}개 구독</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* 계정 */}
           <View style={styles.sectionLabel}>
             <Text style={styles.sectionLabelText}>계정</Text>
@@ -357,7 +440,7 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontSize: 20, fontWeight: '700', color: '#fff' },
   profileInfo: { flex: 1, gap: 4 },
-  nicknameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nicknameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   nicknameText: { fontSize: 17, fontWeight: '700', color: '#111' },
   editNicknameBtn: {
     backgroundColor: '#EFF6FF', borderRadius: 8,
@@ -397,6 +480,24 @@ const styles = StyleSheet.create({
   notifText: { fontSize: 14, color: '#374151', lineHeight: 20 },
   notifBold: { fontWeight: '700' },
   notifTime: { fontSize: 12, color: '#9CA3AF' },
+
+  curatorRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  curatorBorder: { borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  curatorAvatar: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center',
+  },
+  curatorAvatarText: { fontSize: 16, fontWeight: '700', color: '#2563EB' },
+  curatorInfo: { flex: 1 },
+  curatorNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  curatorName: { fontSize: 14, fontWeight: '700', color: '#111' },
+  curatorBlueCheck: {
+    backgroundColor: '#2563EB', borderRadius: 8,
+    paddingHorizontal: 5, paddingVertical: 1,
+  },
+  curatorBlueCheckText: { fontSize: 10, color: '#fff', fontWeight: '700' },
+  curatorColNames: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  curatorSubBadge: { fontSize: 12, color: '#2563EB', fontWeight: '600' },
 
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13 },
   menuText: { flex: 1, fontSize: 15, color: '#374151', fontWeight: '500' },

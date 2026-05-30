@@ -101,6 +101,47 @@ export async function registerForPushNotifications(userId: string): Promise<void
 }
 
 /**
+ * 큐레이터가 새 클립을 전체공개할 때 기존 구독자들에게 알림 발송.
+ * SQL 필요: get_curator_subscriber_tokens(p_owner_id uuid)
+ *
+ * CREATE OR REPLACE FUNCTION get_curator_subscriber_tokens(p_owner_id uuid)
+ * RETURNS TABLE(token text)
+ * LANGUAGE sql SECURITY DEFINER AS $$
+ *   SELECT DISTINCT pt.token
+ *   FROM collections c
+ *   JOIN collection_subscriptions cs ON cs.collection_id = c.id
+ *   JOIN push_tokens pt ON pt.user_id = cs.user_id
+ *   WHERE c.user_id = p_owner_id AND c.is_public = true AND cs.user_id != p_owner_id;
+ * $$;
+ */
+export async function sendNewPublicCollectionNotification(
+  collectionId: string,
+  collectionName: string,
+  ownerUserId: string,
+  ownerNickname: string,
+): Promise<void> {
+  try {
+    const { data: tokens } = await supabase.rpc('get_curator_subscriber_tokens', {
+      p_owner_id: ownerUserId,
+    });
+    if (!tokens || (tokens as any[]).length === 0) return;
+
+    const messages = (tokens as { token: string }[]).map(({ token }) => ({
+      to: token,
+      title: '새 공개 클립 🌐',
+      body: `@${ownerNickname}님이 "${collectionName}"을 공개했어요`,
+      data: { collectionId, type: 'new_public_collection' },
+    }));
+
+    await fetch(EXPO_PUSH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(messages),
+    });
+  } catch (_) {}
+}
+
+/**
  * 공유클립에 새 링크 저장 시 다른 멤버들에게 알림 발송.
  * 3시간 이내에 같은 클립에서 이미 알림이 갔으면 건너뜀.
  */
