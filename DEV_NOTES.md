@@ -6,12 +6,32 @@
 
 ---
 
+## 브랜치 / 버전 관리 원칙
+
+| 브랜치 | 목적 | 병합 방침 |
+|---|---|---|
+| `main` | v1 — 버그 수정·안정화·정식 출시 | v2와 절대 병합 안 함 |
+| `v2` | v2 — 탐색 탭·큐레이터 마켓플레이스 신규 기능 개발 | v2 자체 배포 예정 |
+
+> **절대 규칙:** v1(main)과 v2는 공유하는 Supabase DB를 사용하므로, 스키마 변경은 **추가(add-only)** 원칙으로 진행. 기존 테이블 컬럼 수정/삭제 금지.
+
+### 작업 전 항상 확인
+```bash
+git branch   # 현재 브랜치 확인
+git checkout main   # v1 작업 시
+git checkout v2     # v2 작업 시
+```
+
+---
+
 ## 현재 버전
-| 항목 | 값 |
-|---|---|
-| 앱 버전 | **1.1.1** |
-| iOS 빌드 번호 | 17 |
-| Android versionCode | 10 |
+
+| | v1 (main) | v2 (v2 브랜치) |
+|---|---|---|
+| 앱 버전 | **1.1.1** | **2.0.0** (미출시) |
+| iOS buildNumber | 21 | 21 (v2 별도 빌드 시 증가 필요) |
+| Android versionCode | 10 (로컬 build.gradle 기준) | — |
+| 스토어 상태 | 내부 테스트 배포 중 | 미배포 |
 
 ---
 
@@ -24,6 +44,7 @@
 | TypeScript | 5.9.2 |
 | @supabase/supabase-js | 2.105.4 |
 | @react-navigation/native | 7.2.4 |
+| @react-navigation/bottom-tabs | (탭 네비게이션, v2에서 추가) |
 | react-native-safe-area-context | 5.6.0 |
 
 ---
@@ -34,416 +55,101 @@
 | GitHub | https://github.com/jnyoong/clipu |
 | Supabase URL | https://qzgohbxvpxtsquaygsmh.supabase.co |
 | Expo 프로젝트 | https://expo.dev/accounts/j.nyoong/projects/clipu |
-| 브랜치 | main |
+| 어드민 | https://jnyoong.github.io/clipu/admin.html |
 
 ---
 
-## 배포 현황
+## 배포 프로세스
 
-### iOS
-- **배포 방식:** EAS Build (클라우드) → TestFlight → 내부 테스트
-- **빌드 명령 (맥북에서):**
-  ```bash
-  git stash && git pull
-  npx eas-cli build --platform ios
-  npx eas-cli submit --platform ios
-  ```
-- **환경변수:** EAS 서버에 등록됨 (`eas env:create`로 등록, 매번 할 필요 없음)
-- **Apple 계정:** kahn201130@gmail.com / Team: Y9Q88U5QG3
-- **Bundle ID:** com.clipu.app
-- **주의:** 빌드 전 반드시 `git stash && git pull` 먼저 할 것 (EAS가 app.json을 자동 수정하므로 충돌 발생함)
+### Android 빌드 (Windows에서)
+```bash
+# 1) android/app/build.gradle versionCode 1 증가
+# 2) 빌드 실행
+export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
+export ANDROID_HOME="/c/Users/User/AppData/Local/Android/Sdk"
+cd android && ./gradlew bundleRelease -x lint
+```
+- AAB 파일: `android/app/build/outputs/bundle/release/app-release.aab`
+- 배포: Play Console → 내부 테스트 → 새 버전 → AAB 업로드
 
-### Android
-- **배포 방식:** 로컬 Gradle 빌드 → Play Console 내부 테스트
-- **빌드 명령 (Windows에서):**
-  ```bash
-  export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
-  export ANDROID_HOME="/c/Users/User/AppData/Local/Android/Sdk"
-  cd android && ./gradlew bundleRelease -x lint
-  ```
-- **AAB 파일:** `android/app/build/outputs/bundle/release/app-release.aab`
-- **새 버전 배포 시:** `android/app/build.gradle`의 `versionCode` 1 증가 필요
+### iOS 빌드 (맥북에서 — Xcode 직접 빌드)
+EAS 클라우드 빌드 한도 소진으로 로컬 Xcode 빌드 방식 사용 중.
 
----
-
-## iOS Share Extension — 공유창 내 클립 선택 구현 (맥북에서 진행)
-
-> 외부앱 공유 → Clipu 앱이 열리지 않고 공유 시트 안에서 바로 클립 선택 → 저장 → 원래 앱 유지
-
-### 전제 조건
-- `expo-secure-store` 설치 완료 ✓ (세션 토큰 Keychain에 자동 저장 중)
-- 맥북에서 아래 순서 진행
-
-### Step 1: 최신 코드로 prebuild
+| 상황 | 맥북 명령 |
+|---|---|
+| tsx 코드만 수정 | `git pull` → Xcode Archive |
+| npm 패키지 추가 | `git pull` → `cd ios && pod install && cd ..` → Archive |
+| app.json 플러그인 변경 | `git pull` → `npx expo prebuild --platform ios --clean` → `pod install` → Archive |
+| 첫 빌드 / 흰화면 | 아래 전체 명령 |
 
 ```bash
 cd ~/clipu && git pull
+printf 'EXPO_PUBLIC_SUPABASE_URL=https://qzgohbxvpxtsquaygsmh.supabase.co\nEXPO_PUBLIC_SUPABASE_KEY=sb_publishable_YNvSkk_TQj9bPE4oqoaD3A_8Bx_5K0c\n' > .env
 npx expo prebuild --platform ios --clean
 cd ios && pod install && cd ..
 ```
+Xcode: `open ios/clipu.xcworkspace` → 각 타겟 Signing 설정 → Product → Archive → Upload
 
-### Step 2: Xcode에서 App Group + Keychain 공유 설정
-
-`open ios/clipu.xcworkspace` 후:
-
-1. **clipu 타겟** → Signing & Capabilities → + 버튼
-   - **App Groups** 추가 → `group.com.clipu.app`
-   - **Keychain Sharing** 추가 → `com.clipu.app`
-
-2. **ShareExtension 타겟** → 동일하게 적용
-   - App Groups: `group.com.clipu.app`
-   - Keychain Sharing: `com.clipu.app`
-
-### Step 3: 새 Share Extension 타겟 생성 (기존 ShareExtension 교체)
-
-> File → New → Target → Share Extension → 이름: `ClipuShare`
-
-Package: `com.clipu.app.ClipuShare`
-
-### Step 4: ClipuShareViewController.swift 교체
-
-`ios/ClipuShare/ShareViewController.swift` 내용을 아래로 교체:
-
-```swift
-import UIKit
-import Social
-
-class ShareViewController: UIViewController {
-
-  private let supabaseUrl = "https://qzgohbxvpxtsquaygsmh.supabase.co"
-  private let anonKey = "sb_publishable_YNvSkk_TQj9bPE4oqoaD3A_8Bx_5K0c"
-
-  private var sharedUrl: String = ""
-  private var collections: [[String: String]] = []
-  private var accessToken: String = ""
-  private var userId: String = ""
-
-  private let tableView = UITableView()
-  private let titleLabel = UILabel()
-  private let urlLabel = UILabel()
-  private let indicator = UIActivityIndicatorView(style: .medium)
-
-  override func viewDidLoad() {
-    super.viewDidLoad()
-    setupUI()
-    loadCredentials()
-  }
-
-  private func loadCredentials() {
-    // Keychain에서 토큰 읽기
-    accessToken = readFromKeychain(key: "clipu_access_token") ?? ""
-    userId = readFromKeychain(key: "clipu_user_id") ?? ""
-
-    guard !accessToken.isEmpty else {
-      showError("Clipu 앱에 먼저 로그인해주세요")
-      return
-    }
-
-    // 공유 URL 추출
-    extractSharedUrl { [weak self] url in
-      guard let self = self, let url = url else { return }
-      self.sharedUrl = url
-      DispatchQueue.main.async {
-        self.urlLabel.text = url
-        self.indicator.startAnimating()
-      }
-      self.fetchCollections()
-    }
-  }
-
-  private func fetchCollections() {
-    guard let url = URL(string: "\(supabaseUrl)/rest/v1/rpc/get_user_collections") else { return }
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.setValue(anonKey, forHTTPHeaderField: "apikey")
-    request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-    request.httpBody = "{}".data(using: .utf8)
-
-    // 직접 collection_members 조회로 대체
-    let cmUrl = URL(string: "\(supabaseUrl)/rest/v1/collection_members?select=role,collections(id,name,is_shared)&order=collections(created_at)")!
-    var cmReq = URLRequest(url: cmUrl)
-    cmReq.setValue(anonKey, forHTTPHeaderField: "apikey")
-    cmReq.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-    URLSession.shared.dataTask(with: cmReq) { [weak self] data, _, _ in
-      guard let self = self, let data = data,
-            let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-        DispatchQueue.main.async { self?.showError("클립 목록을 불러오지 못했어요") }
-        return
-      }
-      self.collections = arr.compactMap { item -> [String: String]? in
-        guard let col = item["collections"] as? [String: Any],
-              let id = col["id"] as? String,
-              let name = col["name"] as? String else { return nil }
-        let isShared = col["is_shared"] as? Bool ?? false
-        return ["id": id, "name": (isShared ? "🔗 " : "") + name]
-      }
-      DispatchQueue.main.async {
-        self.indicator.stopAnimating()
-        self.tableView.reloadData()
-      }
-    }.resume()
-  }
-
-  private func saveLink(collectionId: String) {
-    indicator.startAnimating()
-    let endpoint = URL(string: "\(supabaseUrl)/rest/v1/links")!
-    var req = URLRequest(url: endpoint)
-    req.httpMethod = "POST"
-    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    req.setValue(anonKey, forHTTPHeaderField: "apikey")
-    req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-    req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
-
-    let body: [String: Any] = [
-      "user_id": userId,
-      "url": sharedUrl,
-      "collection_id": collectionId
-    ]
-    req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
-    URLSession.shared.dataTask(with: req) { [weak self] _, resp, _ in
-      let ok = (resp as? HTTPURLResponse)?.statusCode == 201
-      DispatchQueue.main.async {
-        self?.indicator.stopAnimating()
-        if ok {
-          self?.extensionContext?.completeRequest(returningItems: nil)
-        } else {
-          self?.showError("저장 실패. 다시 시도해주세요.")
-        }
-      }
-    }.resume()
-  }
-
-  private func extractSharedUrl(completion: @escaping (String?) -> Void) {
-    guard let item = extensionContext?.inputItems.first as? NSExtensionItem,
-          let provider = item.attachments?.first else {
-      completion(nil); return
-    }
-    if provider.hasItemConformingToTypeIdentifier("public.url") {
-      provider.loadItem(forTypeIdentifier: "public.url") { data, _ in
-        completion((data as? URL)?.absoluteString ?? data as? String)
-      }
-    } else if provider.hasItemConformingToTypeIdentifier("public.plain-text") {
-      provider.loadItem(forTypeIdentifier: "public.plain-text") { data, _ in
-        completion(data as? String)
-      }
-    } else {
-      completion(nil)
-    }
-  }
-
-  private func readFromKeychain(key: String) -> String? {
-    let query: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: "expo-secure-store",
-      kSecAttrAccount as String: key,
-      kSecAttrAccessGroup as String: "com.clipu.app",
-      kSecReturnData as String: true,
-      kSecMatchLimit as String: kSecMatchLimitOne
-    ]
-    var result: AnyObject?
-    SecItemCopyMatching(query as CFDictionary, &result)
-    guard let data = result as? Data else { return nil }
-    return String(data: data, encoding: .utf8)
-  }
-
-  private func setupUI() {
-    view.backgroundColor = .systemBackground
-
-    titleLabel.text = "어디에 저장할까요?"
-    titleLabel.font = .boldSystemFont(ofSize: 17)
-    titleLabel.translatesAutoresizingMaskIntoConstraints = false
-
-    urlLabel.font = .systemFont(ofSize: 12)
-    urlLabel.textColor = .secondaryLabel
-    urlLabel.numberOfLines = 1
-    urlLabel.translatesAutoresizingMaskIntoConstraints = false
-
-    indicator.translatesAutoresizingMaskIntoConstraints = false
-
-    tableView.dataSource = self
-    tableView.delegate = self
-    tableView.translatesAutoresizingMaskIntoConstraints = false
-    tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
-
-    let cancelBtn = UIButton(type: .system)
-    cancelBtn.setTitle("취소", for: .normal)
-    cancelBtn.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
-    cancelBtn.translatesAutoresizingMaskIntoConstraints = false
-
-    view.addSubview(titleLabel)
-    view.addSubview(urlLabel)
-    view.addSubview(indicator)
-    view.addSubview(tableView)
-    view.addSubview(cancelBtn)
-
-    NSLayoutConstraint.activate([
-      titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
-      titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-      urlLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6),
-      urlLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-      urlLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-      indicator.topAnchor.constraint(equalTo: urlLabel.bottomAnchor, constant: 12),
-      indicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      tableView.topAnchor.constraint(equalTo: urlLabel.bottomAnchor, constant: 8),
-      tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-      tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-      tableView.bottomAnchor.constraint(equalTo: cancelBtn.topAnchor, constant: -8),
-      cancelBtn.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
-      cancelBtn.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-    ])
-  }
-
-  private func showError(_ msg: String) {
-    let alert = UIAlertController(title: "오류", message: msg, preferredStyle: .alert)
-    alert.addAction(UIAlertAction(title: "확인", style: .default) { [weak self] _ in
-      self?.extensionContext?.cancelRequest(withError: NSError(domain: "ClipuShare", code: 0))
-    })
-    present(alert, animated: true)
-  }
-
-  @objc private func cancelTapped() {
-    extensionContext?.cancelRequest(withError: NSError(domain: "ClipuShare", code: 1))
-  }
-}
-
-extension ShareViewController: UITableViewDataSource, UITableViewDelegate {
-  func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-    collections.count
-  }
-  func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-    let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
-    cell.textLabel?.text = collections[indexPath.row]["name"]
-    return cell
-  }
-  func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-    guard let id = collections[indexPath.row]["id"] else { return }
-    saveLink(collectionId: id)
-  }
-}
-```
-
-### Step 5: ClipuShare/Info.plist 설정
-
-Info.plist에 아래 항목 추가 (NSExtension 딕셔너리 내):
-```xml
-<key>NSExtensionActivationRule</key>
-<dict>
-  <key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
-  <integer>1</integer>
-  <key>NSExtensionActivationSupportsWebPageWithMaxCount</key>
-  <integer>1</integer>
-</dict>
-```
-
-### Step 6: 기존 expo-share-intent ShareExtension 비활성화 (선택)
-
-Xcode → Schemes → clipu → Build → ShareExtension 체크 해제하거나,
-Info.plist에서 `NSExtensionActivationRule`을 빈 딕셔너리로 변경해 공유 대상에서 제외.
-
-### Step 7: 빌드 & 테스트
-
-buildNumber 증가 → Product → Archive → Upload
-
----
-
-## 어드민 페이지
-**URL:** https://jnyoong.github.io/clipu/admin.html
-
-### 기능
-- 전체 사용자 목록 (이메일, 기기 종류, 링크수, 최근 로그인, 가입일)
-- 사용자 데이터 삭제
-- 통계 (총 가입자 / 링크 / 클립 수)
-
-### 어드민 계정 설정 방법
-1. Supabase → Authentication → Users → 본인 계정 클릭
-2. SQL Editor에서 실행:
-```sql
-UPDATE auth.users 
-SET raw_user_meta_data = raw_user_meta_data || '{"is_admin": true}'::jsonb
-WHERE email = '본인이메일@gmail.com';
-```
+### 버전 업 체크리스트
+- [ ] `app.json` ios.buildNumber 증가
+- [ ] `android/app/build.gradle` versionCode 증가
+- [ ] `DEV_NOTES.md` 버전 현황 업데이트
 
 ---
 
 ## Supabase 스키마
 
-### 테이블
+### 테이블 전체 목록
+
+#### v1에서 존재하던 테이블
 ```
-links:              id, user_id, url, title, description, image_url, collection_id, created_at
-collections:        id, user_id, name, is_shared, invite_code, created_at
-collection_members: id, collection_id, user_id, role('owner'|'member'), created_at
-```
-
-### RPC 함수 (Supabase에 등록된 것들)
-| 함수 | 설명 |
-|---|---|
-| `get_collection_by_invite(code)` | 초대 코드로 클립 정보 조회 |
-| `join_collection(code)` | 초대 코드로 클립 참여 (최대 30명) |
-| `get_collection_members(coll_id)` | 클립 멤버 목록 조회 (닉네임 포함, SECURITY DEFINER) |
-| `get_collection_push_tokens(coll_id)` | 공유클립 멤버 푸시 토큰 조회 — **미등록, 아래 SQL 실행 필요** |
-| `delete_my_account()` | 본인 계정 + 데이터 완전 삭제 |
-| `admin_list_users()` | 전체 유저 목록 (어드민 전용) |
-| `admin_delete_user(target_user_id)` | 유저 삭제 (어드민 전용) |
-
----
-
-## 푸시 알림 설정 (다음 세션 — Firebase 준비 완료 후)
-
-### 1단계: Supabase SQL 실행 (지금 바로 가능)
-Supabase → SQL Editor 에서 아래 실행:
-
-```sql
--- 푸시 토큰 저장 테이블
-CREATE TABLE IF NOT EXISTS push_tokens (
-  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  token text NOT NULL,
-  updated_at timestamptz DEFAULT now()
-);
-ALTER TABLE push_tokens ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "own token" ON push_tokens FOR ALL USING (auth.uid() = user_id);
-
--- 공유클립 멤버 토큰 조회 (내 토큰 제외, SECURITY DEFINER)
-CREATE OR REPLACE FUNCTION get_collection_push_tokens(coll_id uuid)
-RETURNS TABLE(token text)
-LANGUAGE sql SECURITY DEFINER AS $$
-  SELECT pt.token
-  FROM collection_members cm
-  JOIN push_tokens pt ON pt.user_id = cm.user_id
-  WHERE cm.collection_id = coll_id AND cm.user_id != auth.uid();
-$$;
-
--- get_collection_members 0명 버그 해결용 (기존 함수 재생성)
-CREATE OR REPLACE FUNCTION get_collection_members(coll_id uuid)
-RETURNS TABLE(user_id uuid, role text, nickname text)
-LANGUAGE sql SECURITY DEFINER AS $$
-  SELECT cm.user_id, cm.role,
-         (auth.users.raw_user_meta_data->>'nickname') AS nickname
-  FROM collection_members cm
-  JOIN auth.users ON auth.users.id = cm.user_id
-  WHERE cm.collection_id = coll_id;
-$$;
+links               id, user_id, url, title, description, image_url, collection_id, created_at
+                    + note text (v2에서 추가)
+collections         id, user_id, name, is_shared, invite_code, created_at
+                    + is_public bool (v2에서 추가)
+                    + description text (v2에서 추가)
+                    + category text (v2에서 추가)
+                    + cover_url text (v2에서 추가)
+collection_members  id, collection_id, user_id, role('owner'|'member'), created_at
+link_reactions      link_id, user_id, created_at  (공유클립 하트)
+push_tokens         user_id (PK), token, updated_at
+collection_notification_cooldown  collection_id (PK), notified_at
 ```
 
-### 2단계: Firebase 프로젝트 생성
-1. https://console.firebase.google.com → 새 프로젝트 (clipu)
-2. Android 앱 추가 → 패키지명: `com.clipu.app`
-3. `google-services.json` 다운로드 → `android/app/` 폴더에 복사
-
-### 3단계: expo-notifications 설치 + 빌드
-```bash
-npm install expo-notifications
-# app.json plugins 배열에 "expo-notifications" 추가
-npx expo prebuild --platform android  # android/ 재생성
-# 그 후 versionCode 증가하고 AAB 빌드
+#### v2에서 추가된 테이블
+```
+collection_likes         collection_id, user_id, created_at  (공개클립 하트)
+collection_subscriptions collection_id, user_id, created_at  (공개클립 구독)
+user_profiles            user_id (PK), blue_check bool, total_hearts int, bio text, avatar_url text
+reports                  id, reporter_id, collection_id, reason, created_at  (신고)
 ```
 
-### 4단계: 토큰 등록 코드 활성화
-`lib/pushNotifications.ts` → `registerForPushNotifications` 함수 주석 해제
+### RPC 함수 전체 목록
 
-이후 앱 실행 시 자동으로 토큰이 등록되고, 공유클립에 링크 저장 시 다른 멤버에게 알림이 발송됩니다.
+| 함수 | 브랜치 | 설명 |
+|---|---|---|
+| `get_collection_by_invite(code)` | v1+v2 | 초대코드로 클립 조회 |
+| `join_collection(code)` | v1+v2 | 초대코드로 클립 참여 (최대 30명) |
+| `get_collection_members(coll_id)` | v1+v2 | 멤버 목록 (닉네임 포함, SECURITY DEFINER) |
+| `get_collection_push_tokens(coll_id)` | v1+v2 | 공유클립 멤버 푸시 토큰 조회 |
+| `delete_my_account()` | v1+v2 | 본인 계정+데이터 완전 삭제 |
+| `admin_list_users()` | v1+v2 | 전체 유저 목록 (어드민 전용) |
+| `admin_delete_user(target_id)` | v1+v2 | 유저 삭제 (어드민 전용) |
+| `get_public_collections(p_category)` | v2 | 공개 클립 목록 (카테고리 필터, 통계 포함) |
+| `get_curator_subscriber_tokens(p_owner_id)` | v2 | 큐레이터 구독자 푸시 토큰 조회 |
+| `admin_list_public_collections()` | v2 | 어드민: 공개 클립 전체 조회 |
+| `admin_set_collection_public(id, bool)` | v2 | 어드민: 공개 상태 변경 |
+
+### RLS 정책 핵심 사항
+- `links`: 본인 링크 + 공개 클립 링크 + 내가 속한 공유클립 링크 읽기 허용
+- `collection_likes`: 본인 insert/delete만 허용, 조회는 모두 가능
+- `collection_subscriptions`: 본인 insert/delete만 허용
+- `user_profiles`: 본인 전체, 타인은 읽기만 허용
+- `reports`: 본인 insert, 어드민만 읽기
+
+### Trigger
+- `on_auth_user_created` — 신규 가입 시 `user_profiles` row 자동 생성
+- `auto_blue_check` — `collection_likes` insert/delete 시 큐레이터 총 하트 수 갱신 + 100개 이상이면 `blue_check = true` 자동 부여
 
 ---
 
@@ -451,94 +157,149 @@ npx expo prebuild --platform android  # android/ 재생성
 
 ```
 clipu/
-├── App.tsx                    # 진입점. SafeAreaProvider + ErrorBoundary + AuthProvider
-├── contexts/AuthContext.tsx   # 세션 상태 관리
+├── App.tsx                         # 진입점, 딥링크, ShareHandler, 탭 네비게이터(v2)
+├── contexts/AuthContext.tsx         # 세션 상태 관리
 ├── lib/
-│   ├── supabase.ts            # Supabase 클라이언트
-│   ├── og.ts                  # OG 메타데이터 추출
-│   └── saveLink.ts            # 링크 저장 공통 함수
+│   ├── supabase.ts                  # Supabase 클라이언트
+│   ├── og.ts                        # OG 메타데이터 추출
+│   ├── saveLink.ts                  # 링크 저장 공통 함수 (note 파라미터 포함)
+│   └── pushNotifications.ts         # 푸시 알림 헬퍼 (공유클립·공개클립 알림)
 ├── screens/
-│   ├── LoginScreen.tsx        # 로그인
-│   ├── SignupScreen.tsx       # 회원가입 (이메일 중복/비밀번호 검증, platform 저장)
-│   ├── HomeScreen.tsx         # 링크 목록 + 클립 탭 + 설정 버튼 + 편집 모드
-│   ├── SettingsModal.tsx      # 닉네임 수정 + 회원탈퇴
-│   ├── AddLinkScreen.tsx      # 링크 저장
-│   ├── CollectionsScreen.tsx  # 클립 관리
-│   ├── SharePickerScreen.tsx  # Android 공유 인텐트 처리
-│   └── JoinCollectionScreen.tsx # 공유 클립 참여
+│   ├── LoginScreen.tsx              # 로그인
+│   ├── SignupScreen.tsx             # 회원가입 (이메일 중복/비밀번호 검증)
+│   ├── HomeScreen.tsx               # 링크 목록, 클립 탭, 구독탭(💫), 코멘트 편집
+│   ├── AddLinkScreen.tsx            # 링크 저장 (큐레이터 코멘트 입력 포함)
+│   ├── CollectionsScreen.tsx        # 클립 관리
+│   ├── SharePickerScreen.tsx        # 외부 공유 수신 시 클립 선택
+│   ├── JoinCollectionScreen.tsx     # 공유 클립 참여
+│   ├── SettingsModal.tsx            # 닉네임 수정, 회원탈퇴
+│   ├── PublicConvertModal.tsx       # 클립 전체공개 전환 모달 (v2)
+│   ├── ExploreScreen.tsx            # 탐색 탭 — 공개 클립 목록, 정렬/필터 (v2)
+│   ├── CollectionDetailScreen.tsx   # 공개 클립 상세 — 링크 잠금, 신고, 큐레이터 이동 (v2)
+│   ├── CuratorProfileScreen.tsx     # 큐레이터 프로필 — 공개 클립 전체 목록 (v2)
+│   └── MyScreen.tsx                 # 마이 탭 — 프로필, 공개 클립 통계, 구독 큐레이터 (v2)
 ├── docs/
-│   ├── admin.html             # 어드민 웹페이지
-│   ├── join.html              # 초대 링크 중간 페이지
-│   └── privacy.html           # 개인정보처리방침
-├── eas.json                   # EAS 빌드 설정
-└── app.json                   # Expo 앱 설정 (버전, 번들ID 등)
+│   ├── admin.html                   # 어드민 웹 (사용자 관리 + 공개 클립 관리 탭)
+│   ├── join.html                    # 공유 클립 초대 중간 페이지
+│   └── privacy.html                 # 개인정보처리방침
+├── CLAUDE.md                        # Claude Code 작업 지침
+├── DEV_NOTES.md                     # 이 파일 — 전체 개발 현황
+└── PRODUCT_IDEAS.md                 # 차별화 기능 아이디어
+```
+
+---
+
+## 네비게이션 구조 (v2)
+
+```
+MainTabs (BottomTabNavigator)
+├── 홈 탭 (HomeStack)
+│   ├── Home          HomeScreen
+│   ├── AddLink       AddLinkScreen
+│   └── Collections   CollectionsScreen
+├── 탐색 탭 (ExploreStack)
+│   ├── Explore           ExploreScreen
+│   ├── CollectionDetail  CollectionDetailScreen
+│   └── CuratorProfile    CuratorProfileScreen
+└── 마이 탭
+    └── MyScreen
 ```
 
 ---
 
 ## 완료된 기능
 
-### 인증
-- 로그인 / 회원가입 (이메일+비밀번호)
-- 회원가입 시 검증: 영문+숫자 8자 이상, 비밀번호 확인, 중복 이메일 처리
-- 세션 자동 유지 (AsyncStorage)
-- 로그아웃 / 회원탈퇴
+### v1 기능 (main 브랜치)
+- 로그인 / 회원가입 (이메일+비밀번호, 검증 포함)
+- 세션 자동 유지, 로그아웃, 회원탈퇴
+- 링크 저장 (URL → OG 메타데이터 자동 추출 → Supabase 저장)
+- 클립(폴더) 생성 / 이름 변경 / 삭제
+- 클립 탭 필터 (전체 / 클립별 / 미분류)
+- 스와이프 삭제, 편집 모드(다중 선택 삭제)
+- 공유 클립 (최대 30명, 초대 링크)
+- 클립 길게 누르기 ActionSheet
+- 하트 반응 (공유클립 링크)
+- 말풍선 툴팁 (앱 사용법)
+- 닉네임 수정
+- iOS Share Extension + Android 공유 인텐트 수신
+- 푸시 알림 (공유클립 새 링크 추가 시, 3시간 쿨다운)
+- 어드민 페이지 (사용자 관리)
 
-### 홈 화면
-- 링크 카드 목록 (이미지·제목·도메인·설명)
-- 클립(저장소) 탭 필터 (전체 / 클립별 / 미분류)
-- 탭 길게 누르기 → 초대 링크 공유 / 멤버 보기 / 전환 / 삭제
-- **설정 버튼 (👤):** 편집 / 설정 / 로그아웃 메뉴
-- **편집 모드:** 링크 체크박스 다중 선택 삭제 + 클립 탭 빨간 − 버튼 삭제
-- **공유 멤버 보기:** 멤버 수(X명/30명) + 이메일 목록 모달
-
-### 링크
-- URL 입력 → OG 메타데이터 자동 추출 → Supabase 저장
-- 클립에 분류 가능
-- 카드 길게 누르기 → 삭제
-
-### 공유 클립
-- 클립 생성 시 공유 설정 토글
-- 일반 클립 → 공유 클립 전환 가능
-- 초대 링크 공유: `https://jnyoong.github.io/clipu/join?code=CODE`
-- 최대 30명, owner/member 권한 구분
-
-### 설정
-- 닉네임 수정 (기본값: 이메일 @ 앞부분)
-- 닉네임은 Supabase user_metadata에 저장
+### v2 추가 기능 (v2 브랜치)
+- **3탭 구조:** 홈 / 탐색 / 마이
+- **전체공개 클립:** 클립을 공개로 전환 (카테고리 + 소개글 + 링크 10개 이상 필수, 비가역)
+- **탐색 탭:** 공개 클립 카드 목록, 카테고리 필터, 인기·구독·링크순 정렬
+- **구독 탭(💫):** 홈에서 구독한 큐레이터 클립 링크 별도 탭으로 표시
+- **클립 상세:** 링크 3개 미리보기 잠금(비구독자), 구독 버튼, 신고 기능
+- **큐레이터 코멘트:** 링크 저장/편집 시 코멘트(note) 입력, 카드에 💬 표시
+- **큐레이터 프로필:** @닉네임 탭 → 해당 큐레이터의 공개 클립 전체 목록
+- **블루체크:** 총 하트 100개 이상 시 자동 부여 (Supabase trigger)
+- **마이 탭:** 공개 클립 통계, 최근 알림(하트·구독), 구독 중인 큐레이터 목록 + 구독 취소
+- **신규 공개 클립 알림:** 큐레이터가 클립을 전체공개하면 기존 구독자에게 푸시 알림
+- **어드민 공개 클립 관리:** admin.html에 공개 클립 탭 추가 (숨김 처리 가능)
 
 ---
 
-## v1.1.1 변경사항 (2026-05-15)
+## 알려진 제약사항
 
-### 신규 기능
-- **스와이프 삭제:** 링크카드 왼쪽 스와이프 → 삭제 확인 팝업 (개인/공유 모두)
-- **하트 반응:** 공유클립 링크카드 꾹 누르면 하트 토글 (약한 햅틱, 멤버 간 공유)
-  - Supabase `link_reactions` 테이블 추가 필요 (별도 SQL 실행)
-- **Pull-to-Refresh:** 리스트 아래로 당기면 새로고침
-- **로고 말풍선:** Clipu 로고 클릭 시 앱 내 커스텀 말풍선 (사용법 안내)
-- **iOS Share Extension 재활성화:** app.json plugins에 expo-share-intent 추가
-  - `androidIntentFilters: []` 로 Android는 로컬 AndroidManifest.xml 유지
-- **커스텀 ActionSheet:** Alert.alert 대신 커스텀 모달 (Android 취소 버튼 문제 해결)
-- **Android 링크카드 크기 조절:** Platform 조건부 스타일
+| 항목 | 내용 |
+|---|---|
+| CollectionDetailScreen 링크 표시 | DB에서 최대 20개만 fetch. 실제 링크 수는 `collection.link_count`로 표시 |
+| CuratorProfileScreen 데이터 조회 | `get_public_collections(null)` 전체 조회 후 클라이언트 필터링 — 클립이 많아지면 느려질 수 있음 |
+| CuratorProfile 진입 경로 | 탐색탭(ExploreStack) 내에서만 접근 가능. MyScreen 구독 목록에서는 미지원 |
+| 구독 클립 링크 코멘트 편집 | 타인 링크이므로 onLongPress 비활성화 (의도된 제약) |
+| v2 배포 시 기존 v1 사용자 | 같은 Supabase DB 공유. v2 신규 컬럼/테이블은 v1 앱에서 무시됨 (호환 OK) |
 
-### 버그 수정
-- 공유클립 팝업 취소 버튼 Android에서 작동 안 하는 문제
-- 공유 멤버 0명 표시 버그 (RPC 대신 직접 쿼리로 대체)
-- 빈 링크 목록에서 Pull-to-Refresh 안 되는 문제
+---
 
-### 추가된 패키지
-- `react-native-gesture-handler` (스와이프)
-- `expo-haptics` (햅틱 진동)
+## 버그 수정 이력 (v2)
+
+| 날짜 | 내용 |
+|---|---|
+| 2026-05-31 | 자기 클립 구독 시 탭 2개 + 갯수 2배 버그 — `filteredSubIds` 필터링 추가 |
+| 2026-05-31 | CollectionDetailScreen `get_public_collections` RPC 파라미터 누락 — `{ p_category: null }` 추가 |
+| 2026-05-31 | hiddenCount 계산 오류 — `links.length`(max 20) 대신 `collection.link_count` 기준으로 수정 |
+| 2026-05-31 | CollectionDetailScreen links fetch 에러 시 빈 배열 초기화 추가 |
+| 2026-05-31 | HomeScreen 코멘트 저장 실패 시 Alert 피드백 없던 문제 수정 |
+| 2026-05-31 | MyScreen 구독 취소 실패 시 state rollback 없던 문제 수정 |
+| 2026-05-31 | ExploreScreen 카드에 구독자 수 미표시 — 정렬 기준과 불일치 수정 |
+
+---
+
+## v2 미구현 항목 (Phase 2 예정)
+
+- MyScreen 구독 큐레이터 목록에서 프로필 페이지 이동
+- 탐색탭 검색 기능 (큐레이터명·클립명 키워드)
+- 알림 집계 표시 ("오늘 ♥ 12개, 구독 3명 추가")
+- 큐레이터 커버 이미지 업로드 (Supabase Storage + expo-image-picker)
+- 신고 집계 어드민 알림
+- 블루체크 조건 세분화 (현재: 하트 100개 단일 기준)
+
+---
+
+## 어드민 페이지
+**URL:** https://jnyoong.github.io/clipu/admin.html
+
+### 탭 구성
+- **사용자 관리:** 전체 유저 목록, 이메일/링크수/가입일/삭제
+- **공개 클립 관리 (v2 추가):** 공개 클립 목록, 숨김 처리
+
+### 어드민 계정 설정
+```sql
+UPDATE auth.users
+SET raw_user_meta_data = raw_user_meta_data || '{"is_admin": true}'::jsonb
+WHERE email = '본인이메일@gmail.com';
+```
 
 ---
 
 ## 알아두면 좋은 것들
 
-- **iOS 빌드 충돌:** EAS가 app.json을 자동 수정함. 빌드 전 `git stash && git pull` 필수.
-- **expo-share-intent 플러그인:** v1.1.1에서 재활성화. 이전 중복 충돌 원인은 extra.eas.build.experimental 중복 정의였음 (현재 제거됨).
-- **환경변수:** `.env`는 gitignore. EAS 환경변수는 `eas env:create`로 등록 (1회만).
-- **Android 빌드:** 로컬 Gradle로만 빌드. EAS Android 빌드는 키스토어 설정 필요.
-- **키스토어:** `android/app/clipu-release.keystore` + `_backup/` 폴더 백업 (절대 분실 금지).
-- **어드민 접근:** is_admin 메타데이터 없으면 로그인해도 접근 차단됨.
-- **link_reactions RLS:** 공유클립 멤버끼리 하트를 볼 수 있도록 SELECT 정책 설정 필요.
+- **iOS 흰화면:** Xcode 직접 빌드 시 `.env` 없으면 Supabase 키 미포함 → 흰화면. 맥북에 `.env` 한 번만 생성하면 이후 유지됨
+- **android/ gitignore:** `build.gradle` 수정은 로컬에서만. GitHub에 반영 안 됨
+- **키스토어:** `android/app/clipu-release.keystore` + `_backup/` 절대 분실 금지
+- **딥링크 파싱:** `ExpoLinking.parse('clipu://join/CODE')` → hostname='join', path='CODE'
+- **ActionSheet + Share.share() 충돌:** onPress에 setTimeout 300ms 딜레이로 해결
+- **Supabase DB 공유:** v1·v2가 같은 DB 사용. 스키마 변경은 항상 추가 원칙 (기존 컬럼 삭제 금지)
+- **블루체크:** Supabase trigger로 자동 부여. 어드민이 수동으로 줄 필요 없음
+- **공개 클립 비가역성:** `is_public = true` 로 바꾸면 앱에서 되돌릴 수 없음 (어드민은 `admin_set_collection_public`으로 숨김 가능)

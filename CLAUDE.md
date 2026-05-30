@@ -35,7 +35,8 @@ git branch   # 현재 브랜치 확인
 - **GitHub:** https://github.com/jnyoong/clipu
 - **Supabase:** https://qzgohbxvpxtsquaygsmh.supabase.co
 - **어드민:** https://jnyoong.github.io/clipu/admin.html
-- **현재 버전:** 1.1.1 (iOS 빌드 16 / Android versionCode 9)
+- **v1 버전:** 1.1.1 (iOS buildNumber 21 / Android versionCode 10)
+- **v2 버전:** 2.0.0 (개발 중, 미출시)
 
 ---
 
@@ -103,12 +104,19 @@ cd ios && pod install && cd ..
 ## 주요 파일
 | 파일 | 역할 |
 |---|---|
-| `App.tsx` | 진입점, 딥링크 처리, ShareHandler (iOS+Android 공유 인텐트) |
-| `screens/HomeScreen.tsx` | 링크 목록, 클립 탭, 스와이프 삭제, 하트, 말풍선, 편집 모드 |
+| `App.tsx` | 진입점, 딥링크, ShareHandler, 3탭 네비게이터 (v2) |
+| `screens/HomeScreen.tsx` | 링크 목록, 클립 탭, 구독탭(💫), 코멘트 편집 모달 |
+| `screens/AddLinkScreen.tsx` | 링크 저장 (큐레이터 코멘트 입력 포함) |
+| `screens/ExploreScreen.tsx` | 탐색 탭 — 공개 클립 목록, 카테고리·정렬 (v2) |
+| `screens/CollectionDetailScreen.tsx` | 공개 클립 상세 — 링크 잠금, 신고, 큐레이터 이동 (v2) |
+| `screens/CuratorProfileScreen.tsx` | 큐레이터 프로필 — 공개 클립 목록 (v2) |
+| `screens/MyScreen.tsx` | 마이 탭 — 통계, 알림, 구독 큐레이터·취소 (v2) |
+| `screens/PublicConvertModal.tsx` | 전체공개 전환 모달 (v2) |
 | `screens/SharePickerScreen.tsx` | 외부 공유 수신 시 클립 선택 화면 |
 | `screens/SettingsModal.tsx` | 닉네임 수정, 회원탈퇴 |
-| `screens/SignupScreen.tsx` | 회원가입 (검증 포함) |
-| `docs/admin.html` | 어드민 웹페이지 |
+| `lib/saveLink.ts` | 링크 저장 공통 함수 (note 파라미터 포함) |
+| `lib/pushNotifications.ts` | 푸시 알림 헬퍼 |
+| `docs/admin.html` | 어드민 웹 (사용자 관리 + 공개 클립 관리) |
 | `docs/join.html` | 공유 클립 초대 중간 페이지 |
 | `DEV_NOTES.md` | 전체 개발 현황 상세 기록 |
 | `PRODUCT_IDEAS.md` | 차별화 기능 아이디어 |
@@ -117,18 +125,35 @@ cd ios && pod install && cd ..
 
 ## Supabase 테이블
 ```
-links:              id, user_id, url, title, description, image_url, collection_id, created_at
-collections:        id, user_id, name, is_shared, invite_code, created_at
-collection_members: id, collection_id, user_id, role('owner'|'member'), created_at
-link_reactions:     link_id, user_id, created_at  (하트 기능)
+--- v1+v2 공통 ---
+links               id, user_id, url, title, description, image_url, collection_id, note, created_at
+collections         id, user_id, name, is_shared, invite_code, is_public, description, category, cover_url, created_at
+collection_members  id, collection_id, user_id, role('owner'|'member'), created_at
+link_reactions      link_id, user_id, created_at  (공유클립 하트)
+push_tokens         user_id(PK), token, updated_at
+collection_notification_cooldown  collection_id(PK), notified_at
+
+--- v2 전용 ---
+collection_likes         collection_id, user_id, created_at  (공개클립 하트)
+collection_subscriptions collection_id, user_id, created_at  (공개클립 구독)
+user_profiles            user_id(PK), blue_check, total_hearts, bio, avatar_url
+reports                  id, reporter_id, collection_id, reason, created_at
 ```
 
 ## Supabase RPC 함수
+**v1+v2 공통:**
 - `get_collection_by_invite(code)` — 초대코드로 클립 조회
 - `join_collection(code)` — 클립 참여 (최대 30명)
 - `get_collection_members(coll_id)` — 멤버 목록 (nickname 포함, SECURITY DEFINER)
+- `get_collection_push_tokens(coll_id)` — 공유클립 멤버 푸시 토큰 조회
 - `delete_my_account()` — 회원탈퇴
 - `admin_list_users()` / `admin_delete_user(id)` — 어드민 전용
+
+**v2 전용:**
+- `get_public_collections(p_category)` — 공개 클립 목록 (통계 포함)
+- `get_curator_subscriber_tokens(p_owner_id)` — 큐레이터 구독자 푸시 토큰
+- `admin_list_public_collections()` — 어드민: 공개 클립 전체 조회
+- `admin_set_collection_public(id, bool)` — 어드민: 공개 상태 변경
 
 ---
 
@@ -137,3 +162,6 @@ link_reactions:     link_id, user_id, created_at  (하트 기능)
 - **iOS 흰화면:** Xcode 직접 빌드 시 `.env` 파일 없으면 Supabase 키 미포함 → 흰화면
 - **공유클립 초대링크:** `https://jnyoong.github.io/clipu/join?code=` 형식 사용
 - **ActionSheet + Share.share() 충돌:** onPress에 setTimeout 300ms 딜레이로 해결
+- **CollectionDetailScreen 링크 수:** DB fetch limit 20개, 배너의 숨겨진 링크 수는 `collection.link_count` 기준
+- **Supabase DB 공유:** v1·v2 동일 DB. 스키마 변경은 반드시 add-only 원칙
+- **공개 클립 비가역:** `is_public = true` 후 앱에서 되돌리기 불가 (어드민 숨김만 가능)
