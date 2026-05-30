@@ -21,6 +21,7 @@ import SharePickerScreen from './screens/SharePickerScreen';
 import JoinCollectionScreen from './screens/JoinCollectionScreen';
 import ExploreScreen from './screens/ExploreScreen';
 import CollectionDetailScreen from './screens/CollectionDetailScreen';
+import MyScreen from './screens/MyScreen';
 
 export type AuthStackParamList = {
   Login: undefined;
@@ -41,6 +42,7 @@ export type ExploreStackParamList = {
 export type MainTabParamList = {
   홈: undefined;
   탐색: undefined;
+  마이: undefined;
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -87,8 +89,10 @@ function MainTabs() {
           let iconName: React.ComponentProps<typeof Ionicons>['name'];
           if (route.name === '홈') {
             iconName = focused ? 'bookmark' : 'bookmark-outline';
-          } else {
+          } else if (route.name === '탐색') {
             iconName = focused ? 'compass' : 'compass-outline';
+          } else {
+            iconName = focused ? 'person' : 'person-outline';
           }
           return <Ionicons name={iconName} size={size} color={color} />;
         },
@@ -96,6 +100,7 @@ function MainTabs() {
     >
       <Tab.Screen name="홈" component={HomeStackScreen} />
       <Tab.Screen name="탐색" component={ExploreStackScreen} />
+      <Tab.Screen name="마이" component={MyScreen} />
     </Tab.Navigator>
   );
 }
