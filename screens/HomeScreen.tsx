@@ -15,6 +15,7 @@ import {
   Switch,
   Modal,
   TouchableWithoutFeedback,
+  KeyboardAvoidingView,
   RefreshControl,
   Platform,
   Animated,
@@ -41,6 +42,7 @@ type Link = {
   title: string | null;
   description: string | null;
   image_url: string | null;
+  note: string | null;
   collection_id: string | null;
   created_at: string;
 };
@@ -156,6 +158,9 @@ export default function HomeScreen({ navigation }: Props) {
   const [subColIds, setSubColIds] = useState<string[]>([]);
   const [subColNames, setSubColNames] = useState<Record<string, string>>({});
   const [subLinks, setSubLinks] = useState<Link[]>([]);
+  const [noteModal, setNoteModal] = useState<{ linkId: string; currentNote: string } | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map());
 
@@ -172,7 +177,7 @@ export default function HomeScreen({ navigation }: Props) {
     const [linksRes, colsRes, reactionsRes] = await Promise.all([
       supabase
         .from('links')
-        .select('id, url, title, description, image_url, collection_id, created_at')
+        .select('id, url, title, description, image_url, note, collection_id, created_at')
         .order('created_at', { ascending: false }),
       supabase
         .from('collection_members')
@@ -208,7 +213,7 @@ export default function HomeScreen({ navigation }: Props) {
       const ids = subColsRes.data.map(s => s.collection_id);
       const [pubColsRes, subLinksRes] = await Promise.all([
         supabase.rpc('get_public_collections', { p_category: null }),
-        supabase.from('links').select('id, url, title, description, image_url, collection_id, created_at')
+        supabase.from('links').select('id, url, title, description, image_url, note, collection_id, created_at')
           .in('collection_id', ids).order('created_at', { ascending: false }),
       ]);
       let filteredSubIds: string[] = [];
@@ -538,6 +543,24 @@ export default function HomeScreen({ navigation }: Props) {
     ]);
   };
 
+  const openNoteModal = (link: Link) => {
+    setNoteText(link.note ?? '');
+    setNoteModal({ linkId: link.id, currentNote: link.note ?? '' });
+  };
+
+  const handleSaveNote = async () => {
+    if (!noteModal) return;
+    setSavingNote(true);
+    const trimmed = noteText.trim() || null;
+    const { error } = await supabase
+      .from('links').update({ note: trimmed }).eq('id', noteModal.linkId);
+    setSavingNote(false);
+    if (!error) {
+      setLinks(prev => prev.map(l => l.id === noteModal.linkId ? { ...l, note: trimmed } : l));
+      setNoteModal(null);
+    }
+  };
+
   const isSubTab = typeof selectedCollectionId === 'string' && subColIds.includes(selectedCollectionId);
   const filteredLinks =
     selectedCollectionId === 'all'
@@ -582,18 +605,20 @@ export default function HomeScreen({ navigation }: Props) {
           editMode ? undefined :
           subColIds.includes(item.collection_id ?? '') ? undefined :
           linkIsShared
-            ? () => handleToggleLike(item.id)
-            : () => {
-                Alert.alert('삭제', '이 링크를 삭제할까요?', [
-                  { text: '취소', style: 'cancel' },
-                  {
-                    text: '삭제', style: 'destructive', onPress: async () => {
-                      await supabase.from('links').delete().eq('id', item.id);
-                      setLinks(prev => prev.filter(l => l.id !== item.id));
-                    },
+            ? () => openActionSheet(item.title || item.url || '링크', [
+                { text: '💬 코멘트 추가/수정', onPress: () => openNoteModal(item) },
+                { text: '♥ 하트', onPress: () => handleToggleLike(item.id) },
+                { text: '취소', style: 'cancel' },
+              ])
+            : () => openActionSheet(item.title || item.url || '링크', [
+                { text: '💬 코멘트 추가/수정', onPress: () => openNoteModal(item) },
+                { text: '삭제', style: 'destructive', onPress: async () => {
+                    await supabase.from('links').delete().eq('id', item.id);
+                    setLinks(prev => prev.filter(l => l.id !== item.id));
                   },
-                ]);
-              }
+                },
+                { text: '취소', style: 'cancel' },
+              ])
         }
         activeOpacity={0.7}
       >
@@ -623,6 +648,9 @@ export default function HomeScreen({ navigation }: Props) {
           <Text style={styles.cardDomain} numberOfLines={1}>{getDomain(item.url)}</Text>
           {item.description ? (
             <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
+          ) : null}
+          {item.note ? (
+            <Text style={styles.cardNote} numberOfLines={1}>💬 {item.note}</Text>
           ) : null}
         </View>
         {linkIsShared && !editMode && (
@@ -813,6 +841,57 @@ export default function HomeScreen({ navigation }: Props) {
         </TouchableOpacity>
       )}
 
+      {/* 코멘트 편집 Modal */}
+      <Modal
+        visible={noteModal !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNoteModal(null)}
+      >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <TouchableWithoutFeedback onPress={() => setNoteModal(null)}>
+            <View style={styles.noteModalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.noteModalSheet}>
+                  <View style={styles.noteModalHandle} />
+                  <Text style={styles.noteModalTitle}>큐레이터 코멘트</Text>
+                  <Text style={styles.noteModalSub}>이 링크를 저장한 이유나 느낀 점을 적어보세요</Text>
+                  <TextInput
+                    style={styles.noteModalInput}
+                    placeholder="예: 이 레터 진짜 매주 읽어야 함. 마케팅 인사이트 최고"
+                    placeholderTextColor="#bbb"
+                    value={noteText}
+                    onChangeText={setNoteText}
+                    maxLength={200}
+                    multiline
+                    textAlignVertical="top"
+                    autoFocus
+                    blurOnSubmit
+                  />
+                  <Text style={styles.noteModalCount}>{noteText.length}/200</Text>
+                  <View style={styles.noteModalBtnRow}>
+                    <TouchableOpacity style={styles.noteModalCancelBtn} onPress={() => setNoteModal(null)}>
+                      <Text style={styles.noteModalCancelText}>취소</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.noteModalSaveBtn, savingNote && styles.noteModalSaveBtnOff]}
+                      onPress={handleSaveNote}
+                      disabled={savingNote}
+                    >
+                      {savingNote ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <Text style={styles.noteModalSaveText}>저장</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {session && (
         <SettingsModal
           visible={settingsVisible}
@@ -995,6 +1074,34 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: CARD_TITLE_SIZE, fontWeight: '600', color: '#111', lineHeight: 20 },
   cardDomain: { fontSize: 11, color: '#2563EB' },
   cardDesc: { fontSize: 12, color: '#777', lineHeight: 17, marginTop: 1 },
+  cardNote: { fontSize: 11, color: '#2563EB', lineHeight: 16, marginTop: 1 },
+
+  noteModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  noteModalSheet: {
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingTop: 12, paddingBottom: 36, paddingHorizontal: 20,
+  },
+  noteModalHandle: { width: 36, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  noteModalTitle: { fontSize: 18, fontWeight: '700', color: '#111', marginBottom: 4 },
+  noteModalSub: { fontSize: 13, color: '#9CA3AF', marginBottom: 14 },
+  noteModalInput: {
+    borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: '#111',
+    minHeight: 100, lineHeight: 21,
+  },
+  noteModalCount: { fontSize: 11, color: '#bbb', textAlign: 'right', marginTop: 4, marginBottom: 12 },
+  noteModalBtnRow: { flexDirection: 'row', gap: 10 },
+  noteModalCancelBtn: {
+    flex: 1, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 14,
+    paddingVertical: 14, alignItems: 'center',
+  },
+  noteModalCancelText: { fontSize: 15, color: '#555', fontWeight: '600' },
+  noteModalSaveBtn: {
+    flex: 2, backgroundColor: '#2563EB', borderRadius: 14,
+    paddingVertical: 14, alignItems: 'center',
+  },
+  noteModalSaveBtnOff: { backgroundColor: '#93C5FD' },
+  noteModalSaveText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
   heartBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 2,

@@ -25,6 +25,13 @@ export type PublicCollection = {
 
 const CATEGORIES = ['전체', '맛집', '마케팅', '디자인', 'IT/개발', '교육', '여행', '투자/금융', '라이프', '패션', '기타'];
 
+type SortKey = 'popular' | 'subscribers' | 'links';
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'popular', label: '♡ 인기순' },
+  { key: 'subscribers', label: '● 구독순' },
+  { key: 'links', label: '🔗 링크순' },
+];
+
 const CATEGORY_COLORS: Record<string, string> = {
   '맛집': '#FEF3C7', '마케팅': '#EDE9FE', '디자인': '#FCE7F3',
   'IT/개발': '#DBEAFE', '교육': '#D1FAE5', '여행': '#E0F2FE',
@@ -38,6 +45,7 @@ type Props = {
 export default function ExploreScreen({ navigation }: Props) {
   const [collections, setCollections] = useState<PublicCollection[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('전체');
+  const [sortKey, setSortKey] = useState<SortKey>('popular');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -49,6 +57,14 @@ export default function ExploreScreen({ navigation }: Props) {
     setLoading(false);
     setRefreshing(false);
   };
+
+  const sortedCollections = [...collections]
+    .filter(c => c.link_count > 0)
+    .sort((a, b) => {
+      if (sortKey === 'popular') return b.like_count - a.like_count;
+      if (sortKey === 'subscribers') return b.sub_count - a.sub_count;
+      return b.link_count - a.link_count;
+    });
 
   useFocusEffect(useCallback(() => {
     setLoading(true);
@@ -122,17 +138,30 @@ export default function ExploreScreen({ navigation }: Props) {
             </TouchableOpacity>
           ))}
         </ScrollView>
+        <View style={styles.sortRow}>
+          {SORT_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.key}
+              style={[styles.sortBtn, sortKey === opt.key && styles.sortBtnActive]}
+              onPress={() => setSortKey(opt.key)}
+            >
+              <Text style={[styles.sortBtnText, sortKey === opt.key && styles.sortBtnTextActive]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       {loading ? (
         <ActivityIndicator style={styles.loader} color="#2563EB" size="large" />
       ) : (
         <FlatList
-          data={collections}
+          data={sortedCollections}
           keyExtractor={(item) => item.id}
           numColumns={2}
           columnWrapperStyle={styles.row}
-          contentContainerStyle={collections.length === 0 ? styles.emptyContainer : styles.list}
+          contentContainerStyle={sortedCollections.length === 0 ? styles.emptyContainer : styles.list}
           renderItem={renderCard}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" colors={['#2563EB']} />
@@ -179,6 +208,18 @@ const styles = StyleSheet.create({
   categoryTabActive: { backgroundColor: '#2563EB' },
   categoryTabText: { fontSize: 13, color: '#555', fontWeight: '500' },
   categoryTabTextActive: { color: '#fff', fontWeight: '700' },
+
+  sortRow: {
+    flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 10, gap: 8,
+    borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 8,
+  },
+  sortBtn: {
+    paddingHorizontal: 12, paddingVertical: 5, borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+  },
+  sortBtnActive: { backgroundColor: '#2563EB' },
+  sortBtnText: { fontSize: 12, color: '#555', fontWeight: '500' },
+  sortBtnTextActive: { color: '#fff', fontWeight: '700' },
 
   loader: { flex: 1 },
   list: { padding: 12, gap: 12 },

@@ -5,6 +5,7 @@ export async function saveLink(
   url: string,
   userId: string,
   collectionId?: string | null,
+  note?: string | null,
 ): Promise<{ error: string | null }> {
   const normalized = url.startsWith('http') ? url : `https://${url}`;
   const og = await extractOG(normalized);
@@ -16,6 +17,7 @@ export async function saveLink(
     description: og.description,
     image_url: og.image_url,
     collection_id: collectionId ?? null,
+    note: note?.trim() || null,
   });
 
   return { error: error?.message ?? null };

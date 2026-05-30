@@ -19,19 +19,20 @@ import { supabase } from '../lib/supabase';
 import { saveLink } from '../lib/saveLink';
 import { sendSharedCollectionNotification } from '../lib/pushNotifications';
 import { useAuth } from '../contexts/AuthContext';
-import { AppStackParamList } from '../App';
+import { HomeStackParamList } from '../App';
 import { Collection } from './CollectionsScreen';
 
 type PickerItem = { id: string; name: string };
 
 type Props = {
-  navigation: NativeStackNavigationProp<AppStackParamList, 'AddLink'>;
-  route: RouteProp<AppStackParamList, 'AddLink'>;
+  navigation: NativeStackNavigationProp<HomeStackParamList, 'AddLink'>;
+  route: RouteProp<HomeStackParamList, 'AddLink'>;
 };
 
 export default function AddLinkScreen({ navigation, route }: Props) {
   const { session } = useAuth();
   const [url, setUrl] = useState('');
+  const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [selectedCollection, setSelectedCollection] = useState<PickerItem | null>(null);
@@ -68,7 +69,7 @@ export default function AddLinkScreen({ navigation, route }: Props) {
     }
 
     setLoading(true);
-    const { error } = await saveLink(trimmed, session!.user.id, selectedCollection.id);
+    const { error } = await saveLink(trimmed, session!.user.id, selectedCollection.id, note.trim() || null);
     setLoading(false);
 
     if (error) {
@@ -104,6 +105,24 @@ export default function AddLinkScreen({ navigation, route }: Props) {
           autoFocus
           editable={!loading}
         />
+
+        <View style={styles.noteWrapper}>
+          <TextInput
+            style={styles.noteInput}
+            placeholder="큐레이터 코멘트 (선택) — 왜 이 링크를 저장했나요?"
+            placeholderTextColor="#bbb"
+            value={note}
+            onChangeText={setNote}
+            maxLength={200}
+            multiline
+            textAlignVertical="top"
+            editable={!loading}
+            blurOnSubmit
+          />
+          {note.length > 0 && (
+            <Text style={styles.noteCount}>{note.length}/200</Text>
+          )}
+        </View>
 
         <TouchableOpacity
           style={[styles.collectionPicker, !selectedCollection && styles.collectionPickerRequired]}
@@ -211,6 +230,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 12,
     color: '#111',
+  },
+  noteWrapper: {
+    marginBottom: 12,
+  },
+  noteInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#111',
+    minHeight: 72,
+    lineHeight: 21,
+  },
+  noteCount: {
+    fontSize: 11,
+    color: '#bbb',
+    textAlign: 'right',
+    marginTop: 4,
   },
   collectionPicker: {
     borderWidth: 1,

@@ -21,6 +21,7 @@ import SharePickerScreen from './screens/SharePickerScreen';
 import JoinCollectionScreen from './screens/JoinCollectionScreen';
 import ExploreScreen from './screens/ExploreScreen';
 import CollectionDetailScreen from './screens/CollectionDetailScreen';
+import CuratorProfileScreen from './screens/CuratorProfileScreen';
 import MyScreen from './screens/MyScreen';
 
 export type AuthStackParamList = {
@@ -37,6 +38,7 @@ export type HomeStackParamList = {
 export type ExploreStackParamList = {
   Explore: undefined;
   CollectionDetail: { collectionId: string };
+  CuratorProfile: { ownerId: string; ownerNickname: string };
 };
 
 export type MainTabParamList = {
@@ -65,6 +67,7 @@ function ExploreStackScreen() {
     <ExploreStack.Navigator screenOptions={{ headerShown: false }}>
       <ExploreStack.Screen name="Explore" component={ExploreScreen} />
       <ExploreStack.Screen name="CollectionDetail" component={CollectionDetailScreen} />
+      <ExploreStack.Screen name="CuratorProfile" component={CuratorProfileScreen} />
     </ExploreStack.Navigator>
   );
 }

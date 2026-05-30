@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Image, Alert,
+  ActivityIndicator, Image, Alert, Modal, TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -88,6 +88,7 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [likeCount, setLikeCount] = useState(0);
   const [subCount, setSubCount] = useState(0);
+  const [reportMenuVisible, setReportMenuVisible] = useState(false);
 
   const fetchDetail = async () => {
     const [colRes, linksRes, likeRes, subRes] = await Promise.all([
@@ -155,6 +156,21 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
     }
   };
 
+  const handleReport = (reason: string) => {
+    setReportMenuVisible(false);
+    if (!session) { Alert.alert('로그인 필요', '로그인 후 이용해주세요.'); return; }
+    Alert.alert(
+      '신고가 접수됐어요',
+      '운영팀이 확인 후 조치할게요.',
+      [{ text: '확인' }]
+    );
+    supabase.from('reports').insert({
+      reporter_id: session.user.id,
+      collection_id: collectionId,
+      reason,
+    }).then(() => {});
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -191,12 +207,19 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        {/* 헤더 뒤로가기 */}
+        {/* 헤더 뒤로가기 + 더보기 */}
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <View style={styles.backBtnCircle}>
             <Ionicons name="chevron-back" size={22} color="#fff" />
           </View>
         </TouchableOpacity>
+        {!isOwner && (
+          <TouchableOpacity style={styles.moreBtn} onPress={() => setReportMenuVisible(true)}>
+            <View style={styles.backBtnCircle}>
+              <Ionicons name="ellipsis-horizontal" size={18} color="#fff" />
+            </View>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.body}>
           {/* 카테고리 배지 */}
@@ -208,7 +231,14 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
           <Text style={styles.title}>{collection.name}</Text>
 
           {/* 큐레이터 */}
-          <View style={styles.curatorRow}>
+          <TouchableOpacity
+            style={styles.curatorRow}
+            onPress={() => navigation.navigate('CuratorProfile', {
+              ownerId: collection.owner_id,
+              ownerNickname: collection.owner_nickname ?? '익명',
+            })}
+            activeOpacity={0.7}
+          >
             <View style={styles.curatorAvatar}>
               <Text style={styles.curatorAvatarText}>
                 {(collection.owner_nickname ?? '?').charAt(0).toUpperCase()}
@@ -223,8 +253,9 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
                   </View>
                 )}
               </View>
+              <Text style={styles.curatorSubtext}>프로필 보기 →</Text>
             </View>
-          </View>
+          </TouchableOpacity>
 
           {/* 소개글 */}
           <Text style={styles.description}>{collection.description}</Text>
@@ -248,7 +279,11 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
               )}
             </TouchableOpacity>
           </View>
-          <Text style={styles.subscribeHint}>구독하면 홈에서 이 클립의 링크를 바로 볼 수 있어요</Text>
+          <Text style={styles.subscribeHint}>
+            {subscribed || isOwner
+              ? '구독 중이에요 — 홈 💫 탭에서 링크를 바로 열 수 있어요'
+              : '구독하면 모든 링크를 보고 홈에서 바로 열 수 있어요'}
+          </Text>
 
           <View style={styles.divider} />
 
@@ -260,41 +295,95 @@ export default function CollectionDetailScreen({ navigation, route }: Props) {
 
           {links.length === 0 ? (
             <Text style={styles.noLinks}>링크가 없어요.</Text>
-          ) : (
-            links.map((link) => (
-              <View key={link.id} style={styles.linkCard}>
-                {link.image_url ? (
-                  <Image source={{ uri: link.image_url }} style={styles.linkImage} resizeMode="cover" />
-                ) : (() => {
-                  const brand = getServiceBranding(link.url);
-                  return brand ? (
-                    <View style={[styles.linkImage, { backgroundColor: brand.bg, justifyContent: 'center', alignItems: 'center' }]}>
-                      <Text style={{ color: brand.textColor ?? '#fff', fontSize: 12, fontWeight: '800' }}>
-                        {brand.initial}
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={[styles.linkImage, styles.linkImagePlaceholder]} />
-                  );
-                })()}
-                <View style={styles.linkBody}>
-                  <Text style={styles.linkTitle} numberOfLines={2}>{link.title || link.url}</Text>
-                  <Text style={styles.linkDomain}>{getDomain(link.url)}</Text>
-                  {link.note ? (
-                    <Text style={styles.linkNote} numberOfLines={2}>💬 {link.note}</Text>
-                  ) : null}
-                </View>
-              </View>
-            ))
-          )}
+          ) : (() => {
+            const showAll = subscribed || isOwner;
+            const PREVIEW_COUNT = 3;
+            const visibleLinks = showAll ? links : links.slice(0, PREVIEW_COUNT);
+            const hiddenCount = showAll ? 0 : Math.max(0, links.length - PREVIEW_COUNT);
 
-          {!isOwner && collection.link_count > 20 && (
-            <View style={styles.moreHint}>
-              <Text style={styles.moreHintText}>구독하면 업데이트 소식을 받을 수 있어요</Text>
-            </View>
-          )}
+            return (
+              <>
+                {visibleLinks.map((link) => (
+                  <View key={link.id} style={styles.linkCard}>
+                    {link.image_url ? (
+                      <Image source={{ uri: link.image_url }} style={styles.linkImage} resizeMode="cover" />
+                    ) : (() => {
+                      const brand = getServiceBranding(link.url);
+                      return brand ? (
+                        <View style={[styles.linkImage, { backgroundColor: brand.bg, justifyContent: 'center', alignItems: 'center' }]}>
+                          <Text style={{ color: brand.textColor ?? '#fff', fontSize: 12, fontWeight: '800' }}>
+                            {brand.initial}
+                          </Text>
+                        </View>
+                      ) : (
+                        <View style={[styles.linkImage, styles.linkImagePlaceholder]} />
+                      );
+                    })()}
+                    <View style={styles.linkBody}>
+                      <Text style={styles.linkTitle} numberOfLines={2}>{link.title || link.url}</Text>
+                      <Text style={styles.linkDomain}>{getDomain(link.url)}</Text>
+                      {link.note ? (
+                        <Text style={styles.linkNote} numberOfLines={2}>💬 {link.note}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+
+                {/* 잠긴 링크 미리보기 (흐림 처리) */}
+                {hiddenCount > 0 && (
+                  <>
+                    {[...Array(Math.min(hiddenCount, 2))].map((_, i) => (
+                      <View key={`blur-${i}`} style={[styles.linkCard, styles.linkCardBlurred]}>
+                        <View style={[styles.linkImage, styles.linkImagePlaceholder]} />
+                        <View style={styles.linkBody}>
+                          <View style={styles.blurBar} />
+                          <View style={[styles.blurBar, styles.blurBarShort]} />
+                        </View>
+                      </View>
+                    ))}
+                    <TouchableOpacity
+                      style={styles.lockBanner}
+                      onPress={handleToggleSubscribe}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.lockIcon}>🔒</Text>
+                      <View style={styles.lockTextWrap}>
+                        <Text style={styles.lockTitle}>나머지 {hiddenCount}개 링크 보기</Text>
+                        <Text style={styles.lockSub}>구독하면 모든 링크를 보고 홈에서 바로 열 수 있어요</Text>
+                      </View>
+                      <Text style={styles.lockBtn}>구독</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </>
+            );
+          })()}
         </View>
       </ScrollView>
+      {/* 신고 모달 */}
+      <Modal visible={reportMenuVisible} transparent animationType="fade" onRequestClose={() => setReportMenuVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => setReportMenuVisible(false)}>
+          <View style={styles.reportOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.reportSheet}>
+                <Text style={styles.reportTitle}>신고 이유를 선택해주세요</Text>
+                {['스팸 또는 광고', '부적절한 콘텐츠', '저작권 침해', '기타'].map((reason) => (
+                  <TouchableOpacity
+                    key={reason}
+                    style={styles.reportOption}
+                    onPress={() => handleReport(reason)}
+                  >
+                    <Text style={styles.reportOptionText}>{reason}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity style={styles.reportCancel} onPress={() => setReportMenuVisible(false)}>
+                  <Text style={styles.reportCancelText}>취소</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -392,4 +481,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF', borderRadius: 12, padding: 14, alignItems: 'center',
   },
   moreHintText: { fontSize: 13, color: '#2563EB', fontWeight: '500' },
+
+  moreBtn: { position: 'absolute', top: 16, right: 16, zIndex: 10 },
+  curatorSubtext: { fontSize: 12, color: '#2563EB', marginTop: 2 },
+
+  linkCardBlurred: { opacity: 0.25 },
+  blurBar: {
+    height: 10, backgroundColor: '#D1D5DB', borderRadius: 5, marginBottom: 6,
+  },
+  blurBarShort: { width: '60%' },
+  lockBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#EFF6FF', borderRadius: 14, padding: 14,
+    borderWidth: 1.5, borderColor: '#BFDBFE',
+  },
+  lockIcon: { fontSize: 22 },
+  lockTextWrap: { flex: 1 },
+  lockTitle: { fontSize: 14, fontWeight: '700', color: '#1D4ED8' },
+  lockSub: { fontSize: 12, color: '#3B82F6', marginTop: 2, lineHeight: 17 },
+  lockBtn: {
+    fontSize: 13, fontWeight: '700', color: '#fff',
+    backgroundColor: '#2563EB', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
+  },
+
+  reportOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end', paddingBottom: 30 },
+  reportSheet: {
+    backgroundColor: '#fff', borderRadius: 20, marginHorizontal: 16, overflow: 'hidden',
+  },
+  reportTitle: {
+    fontSize: 13, color: '#888', textAlign: 'center',
+    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  reportOption: {
+    paddingVertical: 16, alignItems: 'center',
+    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  reportOptionText: { fontSize: 16, color: '#EF4444' },
+  reportCancel: {
+    backgroundColor: '#fff', paddingVertical: 16, alignItems: 'center',
+    marginTop: 8, borderRadius: 16,
+  },
+  reportCancelText: { fontSize: 16, fontWeight: '600', color: '#333' },
 });

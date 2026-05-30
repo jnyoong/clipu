@@ -48,6 +48,7 @@ export default function MyScreen() {
   const [subscribedCurators, setSubscribedCurators] = useState<CuratorInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [unsubscribingId, setUnsubscribingId] = useState<string | null>(null);
 
   const defaultNickname = session?.user.user_metadata?.nickname
     || session?.user.email?.split('@')[0]
@@ -195,6 +196,35 @@ export default function MyScreen() {
               return;
             }
             await supabase.auth.signOut();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleUnsubscribe = (collectionId: string, collectionName: string) => {
+    Alert.alert(
+      '구독 취소',
+      `"${collectionName}" 구독을 취소할까요?`,
+      [
+        { text: '아니요', style: 'cancel' },
+        {
+          text: '취소하기',
+          style: 'destructive',
+          onPress: async () => {
+            setUnsubscribingId(collectionId);
+            await supabase
+              .from('collection_subscriptions')
+              .delete()
+              .eq('collection_id', collectionId)
+              .eq('user_id', session!.user.id);
+            setSubscribedCurators(prev =>
+              prev.map(curator => ({
+                ...curator,
+                collections: curator.collections.filter(c => c.id !== collectionId),
+              })).filter(curator => curator.collections.length > 0)
+            );
+            setUnsubscribingId(null);
           },
         },
       ]
@@ -352,26 +382,43 @@ export default function MyScreen() {
           ) : (
             <View style={styles.card}>
               {subscribedCurators.map((curator, i) => (
-                <View key={curator.owner_id} style={[styles.curatorRow, i > 0 && styles.curatorBorder]}>
-                  <View style={styles.curatorAvatar}>
-                    <Text style={styles.curatorAvatarText}>
-                      {curator.owner_nickname.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.curatorInfo}>
-                    <View style={styles.curatorNameRow}>
-                      <Text style={styles.curatorName}>@{curator.owner_nickname}</Text>
-                      {curator.blue_check && (
-                        <View style={styles.curatorBlueCheck}>
-                          <Text style={styles.curatorBlueCheckText}>✓</Text>
-                        </View>
-                      )}
+                <View key={curator.owner_id} style={[styles.curatorBlock, i > 0 && styles.curatorBorder]}>
+                  {/* 큐레이터 헤더 */}
+                  <View style={styles.curatorRow}>
+                    <View style={styles.curatorAvatar}>
+                      <Text style={styles.curatorAvatarText}>
+                        {curator.owner_nickname.charAt(0).toUpperCase()}
+                      </Text>
                     </View>
-                    <Text style={styles.curatorColNames} numberOfLines={1}>
-                      {curator.collections.map((c) => c.name).join(' · ')}
-                    </Text>
+                    <View style={styles.curatorInfo}>
+                      <View style={styles.curatorNameRow}>
+                        <Text style={styles.curatorName}>@{curator.owner_nickname}</Text>
+                        {curator.blue_check && (
+                          <View style={styles.curatorBlueCheck}>
+                            <Text style={styles.curatorBlueCheckText}>✓</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.curatorSubBadge}>{curator.collections.length}개 구독 중</Text>
+                    </View>
                   </View>
-                  <Text style={styles.curatorSubBadge}>{curator.collections.length}개 구독</Text>
+                  {/* 클립별 구독 취소 */}
+                  {curator.collections.map((col) => (
+                    <View key={col.id} style={styles.subColRow}>
+                      <Text style={styles.subColName} numberOfLines={1}>{col.name}</Text>
+                      <TouchableOpacity
+                        style={styles.unsubBtn}
+                        onPress={() => handleUnsubscribe(col.id, col.name)}
+                        disabled={unsubscribingId === col.id}
+                      >
+                        {unsubscribingId === col.id ? (
+                          <ActivityIndicator color="#EF4444" size="small" />
+                        ) : (
+                          <Text style={styles.unsubBtnText}>구독 취소</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  ))}
                 </View>
               ))}
             </View>
@@ -481,7 +528,8 @@ const styles = StyleSheet.create({
   notifBold: { fontWeight: '700' },
   notifTime: { fontSize: 12, color: '#9CA3AF' },
 
-  curatorRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  curatorBlock: { paddingVertical: 12 },
+  curatorRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   curatorBorder: { borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   curatorAvatar: {
     width: 40, height: 40, borderRadius: 20,
@@ -497,7 +545,18 @@ const styles = StyleSheet.create({
   },
   curatorBlueCheckText: { fontSize: 10, color: '#fff', fontWeight: '700' },
   curatorColNames: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-  curatorSubBadge: { fontSize: 12, color: '#2563EB', fontWeight: '600' },
+  curatorSubBadge: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+
+  subColRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F9FAFB',
+  },
+  subColName: { flex: 1, fontSize: 13, color: '#374151', fontWeight: '500' },
+  unsubBtn: {
+    borderWidth: 1, borderColor: '#FCA5A5', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 5, minWidth: 68, alignItems: 'center',
+  },
+  unsubBtnText: { fontSize: 12, color: '#EF4444', fontWeight: '600' },
 
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13 },
   menuText: { flex: 1, fontSize: 15, color: '#374151', fontWeight: '500' },
