@@ -266,6 +266,23 @@ MainTabs (BottomTabNavigator)
 
 ---
 
+## 큐레이션 시드 데이터 (2026-06-01)
+
+탐색 탭 초기 콘텐츠 확보를 위한 큐레이션 클립 시드 데이터 생성.
+
+| 항목 | 내용 |
+|---|---|
+| 파일 위치 | `docs/seed_curations_FULL.sql` |
+| 실행 방법 | Supabase 대시보드 → SQL Editor → 붙여넣기 → Run |
+| 큐레이터 계정 | `editor@clipu.app` / `ClipuEditor2025!` (블루체크 자동 설정) |
+| 컬렉션 수 | 50개 (카테고리별 5개 × 10개 카테고리) |
+| 링크 수 | 480개 (모두 실제 웹 검색으로 수집한 URL) |
+| 카테고리 | 맛집·마케팅·디자인·IT/개발·교육·여행·투자/금융·라이프·패션·기타 |
+
+> 실행 전 `seed_curations_README.md` 참고.
+
+---
+
 ## v2 미구현 항목 (Phase 2 예정)
 
 - MyScreen 구독 큐레이터 목록에서 프로필 페이지 이동
